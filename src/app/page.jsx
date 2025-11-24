@@ -55,9 +55,17 @@ export default function Dashboard() {
   const handlePayment = async (data) => {
     setIsSubmitting(true);
     try {
-      await addPaiement(data);
-      setShowPaymentModal(false);
-      alert('Paiement enregistré avec succès !');
+      if (data.mode === 'famille') {
+        // Paiement famille - envoyer tous les paiements
+        await addPaiement(data);
+        setShowPaymentModal(false);
+        alert(`${data.paiements.length} paiements enregistrés avec succès !`);
+      } else {
+        // Paiement individuel
+        await addPaiement(data);
+        setShowPaymentModal(false);
+        alert('Paiement enregistré avec succès !');
+      }
     } catch (error) {
       alert('Erreur lors de l\'enregistrement');
     } finally {

@@ -17,21 +17,44 @@ export async function POST(request) {
   
   try {
     const data = await request.json();
-    const result = await addMoratoire(data);
     
+    // Calculer les dates automatiquement
+    const dateDebut = new Date();
+    const dateEcheance = new Date();
+    dateEcheance.setDate(dateEcheance.getDate() + (parseInt(data.duree) * 7)); // duree en semaines
+    
+    // Formater les dates en DD/MM/YYYY
+    const formatDate = (date) => {
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    };
+    
+    const moratoireData = {
+      idFamille: data.idFamille,
+      date: formatDate(dateDebut), // Date de début (aujourd'hui)
+      dateEcheance: formatDate(dateEcheance), // Date calculée
+      montant: data.montant || '',
+      statut: 'EN COURS',
+      notes: data.notes || '',
+    };
+    
+    const result = await addMoratoire(moratoireData);
+    
+    // Audit
     await logAudit({
-      ...auditInfo,
       action: AUDIT_ACTIONS.CREATE,
-      entity: 'moratoires',
-      entityId: data.nomEleve,
-      details: data,
+      entity: 'moratoire',
+      entityId: result.rowIndex,
+      details: `Famille ${data.idFamille} - ${data.duree} semaine(s)`,
+      ...auditInfo,
     });
     
     return NextResponse.json(result);
   } catch (error) {
     console.error('POST /moratoires:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.CREATE, entity: 'moratoires', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de l\'ajout' }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
@@ -39,48 +62,59 @@ export async function PUT(request) {
   const auditInfo = extractAuditInfo(request);
   
   try {
-    const { rowIndex, ...data } = await request.json();
-    const result = await updateMoratoire(rowIndex, data);
+    const data = await request.json();
+    const { rowIndex, ...updateData } = data;
     
+    if (!rowIndex) {
+      return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
+    }
+    
+    const result = await updateMoratoire(rowIndex, updateData);
+    
+    // Audit
     await logAudit({
-      ...auditInfo,
       action: AUDIT_ACTIONS.UPDATE,
-      entity: 'moratoires',
-      entityId: `Row ${rowIndex}`,
-      details: data,
+      entity: 'moratoire',
+      entityId: rowIndex,
+      details: `Mise à jour moratoire ${rowIndex}`,
+      ...auditInfo,
     });
     
     return NextResponse.json(result);
   } catch (error) {
     console.error('PUT /moratoires:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.UPDATE, entity: 'moratoires', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function DELETE(request) {
   const auditInfo = extractAuditInfo(request);
-  const { searchParams } = new URL(request.url);
-  const rowIndex = searchParams.get('rowIndex');
   
   try {
+    const { searchParams } = new URL(request.url);
+    const rowIndex = parseInt(searchParams.get('rowIndex'));
+    
     if (!rowIndex) {
       return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
     }
     
-    const result = await deleteMoratoire(parseInt(rowIndex));
+    const moratoires = await getMoratoires();
+    const moratoire = moratoires.find(m => m.rowIndex === rowIndex);
     
+    await deleteMoratoire(rowIndex);
+    
+    // Audit
     await logAudit({
-      ...auditInfo,
       action: AUDIT_ACTIONS.DELETE,
-      entity: 'moratoires',
-      entityId: `Row ${rowIndex}`,
+      entity: 'moratoire',
+      entityId: rowIndex,
+      details: moratoire ? `Famille ${moratoire['ID FAMILLE']}` : 'Moratoire supprimé',
+      ...auditInfo,
     });
     
-    return NextResponse.json(result);
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /moratoires:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.DELETE, entity: 'moratoires', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de la suppression' }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

@@ -18,77 +18,120 @@ export async function POST(request) {
   
   try {
     const data = await request.json();
-    const result = await addPaiement(data);
     
-    // Mettre à jour le solde de l'élève
-    const eleves = await getEleves();
-    const eleve = eleves.find(e => e.rowIndex === parseInt(data.idEleve));
-    
-    if (eleve) {
-      const nouveauPaye = parseFloat(eleve.PAYÉ || 0) + parseFloat(data.montantPaye);
-      const totalDu = parseFloat(eleve['TOTAL DÛ'] || 0);
-      const nouveauReste = Math.max(0, totalDu - nouveauPaye);
+    // Vérifier si c'est un paiement famille ou individuel
+    if (data.mode === 'famille' && Array.isArray(data.paiements)) {
+      // Paiement par famille - créer plusieurs paiements
+      const results = [];
       
-      let nouveauStatut = 'EN ATTENTE';
-      if (nouveauPaye >= totalDu) nouveauStatut = 'SOLDÉ';
-      else if (nouveauPaye > 0) nouveauStatut = 'PARTIEL';
+      for (const paiement of data.paiements) {
+        const result = await addPaiement(paiement);
+        results.push(result);
+        
+        // Mettre à jour le solde de l'élève
+        await updateEleveSolde(paiement.idEleve, paiement.montantPaye);
+        
+        // Audit
+        await logAudit({
+          action: AUDIT_ACTIONS.CREATE,
+          entity: 'paiement',
+          entityId: result.rowIndex,
+          details: `Paiement famille: ${paiement.nomEleve} - ${paiement.montantPaye} FCFA`,
+          ...auditInfo,
+        });
+      }
       
-      await updateEleve(eleve.rowIndex, {
-        nom: eleve.NOM,
-        prenom: eleve.PRÉNOM,
-        dateNaissance: eleve['DATE NAISS.'],
-        classe: eleve.CLASSE,
-        idFamille: eleve['ID FAMILLE'],
-        inscription: eleve.INSCRIPTION,
-        scolarite: eleve.SCOLARITÉ,
-        dossier: eleve.DOSSIER,
-        autres: eleve.AUTRES,
-        totalDu: eleve['TOTAL DÛ'],
-        paye: nouveauPaye.toString(),
-        reste: nouveauReste.toString(),
-        statut: nouveauStatut,
+      return NextResponse.json({ 
+        success: true, 
+        count: results.length,
+        results 
       });
+      
+    } else {
+      // Paiement individuel
+      const result = await addPaiement(data);
+      
+      // Mettre à jour le solde de l'élève
+      await updateEleveSolde(data.idEleve, data.montantPaye);
+      
+      // Audit
+      await logAudit({
+        action: AUDIT_ACTIONS.CREATE,
+        entity: 'paiement',
+        entityId: result.rowIndex,
+        details: `${data.nomEleve} - ${data.montantPaye} FCFA`,
+        ...auditInfo,
+      });
+      
+      return NextResponse.json(result);
     }
     
-    await logAudit({
-      ...auditInfo,
-      action: AUDIT_ACTIONS.CREATE,
-      entity: 'paiements',
-      entityId: `${data.nomEleve} - ${data.montantPaye}`,
-      details: data,
-    });
-    
-    return NextResponse.json(result);
   } catch (error) {
     console.error('POST /paiements:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.CREATE, entity: 'paiements', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de l\'ajout' }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+// Fonction helper pour mettre à jour le solde
+async function updateEleveSolde(idEleve, montantPaye) {
+  const eleves = await getEleves();
+  const eleve = eleves.find(e => e.rowIndex === parseInt(idEleve));
+  
+  if (eleve) {
+    const nouveauPaye = parseFloat(eleve.PAYÉ || 0) + parseFloat(montantPaye);
+    const totalDu = parseFloat(eleve['TOTAL DÛ'] || 0);
+    const nouveauReste = Math.max(0, totalDu - nouveauPaye);
+    
+    let nouveauStatut = 'EN ATTENTE';
+    if (nouveauPaye >= totalDu) nouveauStatut = 'SOLDÉ';
+    else if (nouveauPaye > 0) nouveauStatut = 'PARTIEL';
+    
+    await updateEleve(eleve.rowIndex, {
+      nom: eleve.NOM,
+      prenom: eleve.PRÉNOM,
+      dateNaissance: eleve['DATE NAISS.'],
+      classe: eleve.CLASSE,
+      idFamille: eleve['ID FAMILLE'],
+      inscription: eleve.INSCRIPTION,
+      scolarite: eleve.SCOLARITÉ,
+      dossier: eleve.DOSSIER,
+      autres: eleve.AUTRES,
+      totalDu: eleve['TOTAL DÛ'],
+      paye: nouveauPaye.toString(),
+      reste: nouveauReste.toString(),
+      statut: nouveauStatut,
+    });
   }
 }
 
 export async function DELETE(request) {
   const auditInfo = extractAuditInfo(request);
-  const { searchParams } = new URL(request.url);
-  const rowIndex = searchParams.get('rowIndex');
   
   try {
+    const { searchParams } = new URL(request.url);
+    const rowIndex = parseInt(searchParams.get('rowIndex'));
+    
     if (!rowIndex) {
       return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
     }
     
-    const result = await deletePaiement(parseInt(rowIndex));
+    const paiements = await getPaiements();
+    const paiement = paiements.find(p => p.rowIndex === rowIndex);
     
+    await deletePaiement(rowIndex);
+    
+    // Audit
     await logAudit({
-      ...auditInfo,
       action: AUDIT_ACTIONS.DELETE,
-      entity: 'paiements',
-      entityId: `Row ${rowIndex}`,
+      entity: 'paiement',
+      entityId: rowIndex,
+      details: paiement ? `${paiement['NOM ÉLÈVE']} - ${paiement['MONTANT PAYÉ']} FCFA` : 'Paiement supprimé',
+      ...auditInfo,
     });
     
-    return NextResponse.json(result);
+    return NextResponse.json({ success: true });
   } catch (error) {
     console.error('DELETE /paiements:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.DELETE, entity: 'paiements', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de la suppression' }, { status: 500 });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

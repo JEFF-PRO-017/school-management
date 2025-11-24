@@ -20,4 +20,3 @@ convert -size 512x512 xc:none -fill "#3b82f6" -draw "circle 256,256 256,50" \
 - Taille : 512x512px minimum
 - Contenu : Initiales "GS" ou logo de votre école
 - Couleur : Bleu (#3b82f6) pour cohérence avec le thème
-] 

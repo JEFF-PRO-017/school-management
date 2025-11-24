@@ -14,14 +14,7 @@
     "electron:build": "npm run build && electron-builder",
     "electron:build:win": "npm run build && electron-builder --win",
     "electron:build:mac": "npm run build && electron-builder --mac",
-    "electron:build:linux": "npm run build && electron-builder --linux",
-    "capacitor:init": "npx cap init",
-    "capacitor:add:android": "npx cap add android",
-    "capacitor:add:ios": "npx cap add ios",
-    "capacitor:sync": "npm run build && npx cap sync",
-    "capacitor:open:android": "npx cap open android",
-    "capacitor:open:ios": "npx cap open ios",
-    "mobile:build": "npm run build && npx cap sync && npx cap copy"
+    "electron:build:linux": "npm run build && electron-builder --linux"
   },
   "build": {
     "appId": "com.school.management",
@@ -54,6 +47,7 @@
   },
   "dependencies": {
     "next": "14.2.0",
+    "next-pwa": "^5.6.0",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "googleapis": "^134.0.0",
@@ -63,16 +57,13 @@
     "swr": "^2.2.5"
   },
   "devDependencies": {
-    "@capacitor/cli": "^5.5.1",
-    "@capacitor/core": "^5.5.1",
-    "@capacitor/android": "^5.5.1",
-    "@capacitor/ios": "^5.5.1",
     "autoprefixer": "^10.4.18",
     "concurrently": "^8.2.2",
     "electron": "^28.0.0",
     "electron-builder": "^24.9.1",
     "postcss": "^8.4.35",
     "tailwindcss": "^3.4.1",
-    "wait-on": "^7.2.0"
+    "wait-on": "^7.2.0",
+    "webpack": "^5.90.0"
   }
 }

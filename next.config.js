@@ -1,6 +1,14 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: process.env.BUILD_MOBILE ? 'export' : 'standalone',
+const withPWA = require('next-pwa')({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development', // Désactiver en dev
+  buildExcludes: [/middleware-manifest\.json$/],
+})
+
+const nextConfig = withPWA({
+  output: 'standalone',
   compress: true,
   poweredByHeader: false,
   reactStrictMode: true,
@@ -20,6 +28,6 @@ const nextConfig = {
     }
     return config;
   },
-}
+})
 
 module.exports = nextConfig
