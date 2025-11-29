@@ -2,13 +2,47 @@ import { NextResponse } from 'next/server';
 import { getMoratoires, addMoratoire, updateMoratoire, deleteMoratoire } from '@/lib/google-sheets';
 import { logAudit, extractAuditInfo, AUDIT_ACTIONS } from '@/lib/audit';
 
-export async function GET() {
+// Cache en mémoire
+let cacheData = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 5000; // 5 secondes
+
+export async function GET(request) {
   try {
+    // ✅ Vérifier configuration
+    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
+        !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+        !process.env.GOOGLE_PRIVATE_KEY) {
+      return NextResponse.json(
+        { error: 'Configuration Google Sheets manquante' },
+        { status: 500 }
+      );
+    }
+
+    // ✅ Utiliser le cache si frais
+    const now = Date.now();
+    if (cacheData && (now - cacheTimestamp) < CACHE_DURATION) {
+      console.log('✨ Using cache for /api/moratoires');
+      return NextResponse.json(cacheData);
+    }
+
+    // ✅ Fetch depuis Google Sheets
+    console.log('🔍 Fetching from Google Sheets...');
     const moratoires = await getMoratoires();
+    
+    // ✅ Mettre en cache
+    cacheData = moratoires;
+    cacheTimestamp = now;
+    
+    console.log(`✅ GET /api/moratoires: ${moratoires.length} items`);
     return NextResponse.json(moratoires);
+    
   } catch (error) {
-    console.error('GET /moratoires:', error);
-    return NextResponse.json({ error: 'Erreur lors de la récupération' }, { status: 500 });
+    console.error('❌ GET /api/moratoires:', error.message);
+    return NextResponse.json(
+      { error: 'Erreur lors de la récupération des moratoires', details: error.message },
+      { status: 500 }
+    );
   }
 }
 
@@ -18,43 +52,37 @@ export async function POST(request) {
   try {
     const data = await request.json();
     
-    // Calculer les dates automatiquement
-    const dateDebut = new Date();
-    const dateEcheance = new Date();
-    dateEcheance.setDate(dateEcheance.getDate() + (parseInt(data.duree) * 7)); // duree en semaines
+    console.log('⏰ POST /api/moratoires:', data.idFamille, data.duree, 'semaines');
     
-    // Formater les dates en DD/MM/YYYY
-    const formatDate = (date) => {
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = String(date.getMonth() + 1).padStart(2, '0');
-      const year = date.getFullYear();
-      return `${day}/${month}/${year}`;
-    };
+    const result = await addMoratoire(data);
     
-    const moratoireData = {
-      idFamille: data.idFamille,
-      date: formatDate(dateDebut), // Date de début (aujourd'hui)
-      dateEcheance: formatDate(dateEcheance), // Date calculée
-      montant: data.montant || '',
-      statut: 'EN COURS',
-      notes: data.notes || '',
-    };
+    // ✅ Invalider le cache
+    cacheData = null;
     
-    const result = await addMoratoire(moratoireData);
-    
-    // Audit
     await logAudit({
-      action: AUDIT_ACTIONS.CREATE,
-      entity: 'moratoire',
-      entityId: result.rowIndex,
-      details: `Famille ${data.idFamille} - ${data.duree} semaine(s)`,
       ...auditInfo,
+      action: AUDIT_ACTIONS.CREATE,
+      entity: 'moratoires',
+      entityId: `Famille ${data.idFamille} - ${data.duree} semaines`,
+      details: data,
     });
     
-    return NextResponse.json(result);
+    console.log('✅ Moratoire accordé');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('POST /moratoires:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ POST /api/moratoires:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.CREATE, 
+      entity: 'moratoires', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de l\'ajout', details: error.message }, 
+      { status: 500 }
+    );
   }
 }
 
@@ -62,59 +90,91 @@ export async function PUT(request) {
   const auditInfo = extractAuditInfo(request);
   
   try {
-    const data = await request.json();
-    const { rowIndex, ...updateData } = data;
+    const { rowIndex, ...data } = await request.json();
     
     if (!rowIndex) {
-      return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'rowIndex requis' }, 
+        { status: 400 }
+      );
     }
     
-    const result = await updateMoratoire(rowIndex, updateData);
+    console.log('✏️ PUT /api/moratoires:', rowIndex);
     
-    // Audit
+    const result = await updateMoratoire(rowIndex, data);
+    
+    // ✅ Invalider le cache
+    cacheData = null;
+    
     await logAudit({
-      action: AUDIT_ACTIONS.UPDATE,
-      entity: 'moratoire',
-      entityId: rowIndex,
-      details: `Mise à jour moratoire ${rowIndex}`,
       ...auditInfo,
+      action: AUDIT_ACTIONS.UPDATE,
+      entity: 'moratoires',
+      entityId: `Row ${rowIndex}`,
+      details: data,
     });
     
-    return NextResponse.json(result);
+    console.log('✅ Moratoire mis à jour');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('PUT /moratoires:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ PUT /api/moratoires:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.UPDATE, 
+      entity: 'moratoires', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise à jour', details: error.message }, 
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE(request) {
   const auditInfo = extractAuditInfo(request);
+  const { searchParams } = new URL(request.url);
+  const rowIndex = searchParams.get('rowIndex');
   
   try {
-    const { searchParams } = new URL(request.url);
-    const rowIndex = parseInt(searchParams.get('rowIndex'));
-    
     if (!rowIndex) {
-      return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'rowIndex requis' }, 
+        { status: 400 }
+      );
     }
     
-    const moratoires = await getMoratoires();
-    const moratoire = moratoires.find(m => m.rowIndex === rowIndex);
+    console.log('🗑️ DELETE /api/moratoires:', rowIndex);
     
-    await deleteMoratoire(rowIndex);
+    const result = await deleteMoratoire(parseInt(rowIndex));
     
-    // Audit
+    // ✅ Invalider le cache
+    cacheData = null;
+    
     await logAudit({
-      action: AUDIT_ACTIONS.DELETE,
-      entity: 'moratoire',
-      entityId: rowIndex,
-      details: moratoire ? `Famille ${moratoire['ID FAMILLE']}` : 'Moratoire supprimé',
       ...auditInfo,
+      action: AUDIT_ACTIONS.DELETE,
+      entity: 'moratoires',
+      entityId: `Row ${rowIndex}`,
     });
     
-    return NextResponse.json({ success: true });
+    console.log('✅ Moratoire supprimé');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('DELETE /moratoires:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ DELETE /api/moratoires:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.DELETE, 
+      entity: 'moratoires', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression', details: error.message }, 
+      { status: 500 }
+    );
   }
 }

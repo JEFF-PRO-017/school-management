@@ -1,29 +1,28 @@
 'use client';
 
 /**
- * Hook SWR pour la gestion des moratoires
- * Avec filtres par période (date début / date fin)
+ * Hook useMoratoires - SIMPLIFIÉ
+ * Avec filtres par période
  */
 
 import useSWR from 'swr';
 import { useState, useMemo } from 'react';
-import { api, NetworkError } from '@/lib/api-client';
-import { addPendingOperation, OP_TYPES } from '@/lib/offline-manager';
 
 const API_URL = '/api/moratoires';
 
-const fetcher = async (url) => {
-  const data = await api.get(url);
-  return data;
-};
+const fetcher = (url) => fetch(url).then(res => {
+  if (!res.ok) throw new Error('Erreur réseau');
+  return res.json();
+});
 
 export function useMoratoires() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
+      dedupingInterval: 10000,
       keepPreviousData: true,
     }
   );
@@ -33,36 +32,46 @@ export function useMoratoires() {
   const [dateFin, setDateFin] = useState(null);
 
   /**
+   * Parser une date (DD/MM/YYYY ou YYYY-MM-DD)
+   */
+  const parseDate = (dateStr) => {
+    if (!dateStr) return null;
+    if (dateStr.includes('/')) {
+      const [day, month, year] = dateStr.split('/');
+      return new Date(year, month - 1, day);
+    }
+    return new Date(dateStr);
+  };
+
+  /**
    * Données filtrées par période
    */
   const filteredMoratoires = useMemo(() => {
-    if (!data) return [];
+    if (!Array.isArray(data)) return [];
     
     let result = [...data];
 
-    // Filtre date début (supérieure ou égale)
     if (dateDebut) {
       const debut = new Date(dateDebut);
       result = result.filter(m => {
-        const dateMoratoire = parseDate(m.DATE || m['DATE DÉBUT'] || m['DATE ECHEANCE']);
+        const dateMoratoire = parseDate(m['DATE DÉBUT'] || m.DATE);
         return dateMoratoire && dateMoratoire >= debut;
       });
     }
 
-    // Filtre date fin (inférieure ou égale)
     if (dateFin) {
       const fin = new Date(dateFin);
-      fin.setHours(23, 59, 59, 999); // Inclure toute la journée
+      fin.setHours(23, 59, 59, 999);
       result = result.filter(m => {
-        const dateMoratoire = parseDate(m.DATE || m['DATE DÉBUT'] || m['DATE ECHEANCE']);
+        const dateMoratoire = parseDate(m['DATE DÉBUT'] || m.DATE);
         return dateMoratoire && dateMoratoire <= fin;
       });
     }
 
-    // Trier par date décroissante
+    // Tri par date décroissante
     result.sort((a, b) => {
-      const dateA = parseDate(a.DATE || a['DATE DÉBUT'] || a['DATE ECHEANCE']);
-      const dateB = parseDate(b.DATE || b['DATE DÉBUT'] || b['DATE ECHEANCE']);
+      const dateA = parseDate(a['DATE DÉBUT'] || a.DATE);
+      const dateB = parseDate(b['DATE DÉBUT'] || b.DATE);
       if (!dateA) return 1;
       if (!dateB) return -1;
       return dateB - dateA;
@@ -70,38 +79,6 @@ export function useMoratoires() {
 
     return result;
   }, [data, dateDebut, dateFin]);
-
-  /**
-   * Parser une date (formats: DD/MM/YYYY, YYYY-MM-DD, etc.)
-   */
-  function parseDate(dateStr) {
-    if (!dateStr) return null;
-    
-    // Format DD/MM/YYYY
-    if (dateStr.includes('/')) {
-      const [day, month, year] = dateStr.split('/');
-      return new Date(year, month - 1, day);
-    }
-    
-    // Format ISO ou YYYY-MM-DD
-    return new Date(dateStr);
-  }
-
-  /**
-   * Définir la période de filtre
-   */
-  const setFilterPeriod = (debut, fin) => {
-    setDateDebut(debut);
-    setDateFin(fin);
-  };
-
-  /**
-   * Réinitialiser les filtres
-   */
-  const clearFilters = () => {
-    setDateDebut(null);
-    setDateFin(null);
-  };
 
   /**
    * Filtres prédéfinis
@@ -139,148 +116,184 @@ export function useMoratoires() {
         break;
       case 'all':
       default:
-        clearFilters();
+        setDateDebut(null);
+        setDateFin(null);
         break;
     }
+  };
+
+  const clearFilters = () => {
+    setDateDebut(null);
+    setDateFin(null);
   };
 
   /**
    * Ajouter un moratoire
    */
   const addMoratoire = async (moratoireData) => {
+    // Calculs automatiques
+    const dateDebutObj = new Date();
+    const dateFinObj = new Date(dateDebutObj);
+    dateFinObj.setDate(dateFinObj.getDate() + (parseInt(moratoireData.duree) * 7));
+    
+    const dateDebutStr = dateDebutObj.toLocaleDateString('fr-FR');
+    const dateFinStr = dateFinObj.toLocaleDateString('fr-FR');
+    
+    const statut = new Date() > dateFinObj ? 'EN RETARD' : 'EN COURS';
+    
     const tempId = `MOR_${Date.now()}`;
     const newMoratoire = {
-      ...moratoireData,
+      ID: tempId,
       'N° MORATOIRE': tempId,
+      'ID FAMILLE': moratoireData.idFamille,
+      'DATE DÉBUT': dateDebutStr,
+      'DATE FIN': dateFinStr,
+      DURÉE: moratoireData.duree,
+      NOTES: moratoireData.notes || '',
+      STATUT: statut,
       rowIndex: tempId,
       _isOptimistic: true,
     };
 
-    try {
-      await mutate(
-        (currentData) => [...(currentData || []), newMoratoire],
-        { revalidate: false }
-      );
+    console.log('⏰ Adding moratoire:', newMoratoire['ID FAMILLE'], newMoratoire.DURÉE, 'semaines');
 
-      const result = await api.post(API_URL, moratoireData);
-      await mutate();
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return [newMoratoire, ...existing];
+      },
+      false
+    );
 
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        addPendingOperation({
-          type: OP_TYPES.CREATE,
-          entity: 'moratoires',
-          data: moratoireData,
-        });
-        return { success: true, offline: true, data: newMoratoire };
-      }
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(moratoireData),
+    })
+      .then(() => {
+        console.log('✅ Moratoire accordé');
+        setTimeout(() => mutate(), 300);
+      })
+      .catch(error => {
+        console.error('❌ Erreur moratoire:', error);
+        mutate(
+          (current) => {
+            const existing = Array.isArray(current) ? current : [];
+            return existing.filter(m => m.rowIndex !== tempId);
+          },
+          false
+        );
+      });
 
-      await mutate();
-      throw error;
-    }
+    return { success: true, data: newMoratoire };
   };
 
   /**
    * Mettre à jour un moratoire
    */
   const updateMoratoire = async (rowIndex, moratoireData) => {
+    console.log('✏️ Updating moratoire:', rowIndex);
+
     const previousData = data;
 
-    try {
-      await mutate(
-        (currentData) =>
-          currentData?.map((m) =>
-            m.rowIndex === rowIndex
-              ? { ...m, ...moratoireData, _isOptimistic: true }
-              : m
-          ),
-        { revalidate: false }
-      );
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return existing.map((m) =>
+          m.rowIndex === rowIndex
+            ? { ...m, ...moratoireData, _isOptimistic: true }
+            : m
+        );
+      },
+      false
+    );
 
-      const result = await api.put(API_URL, { ...moratoireData, rowIndex });
-      await mutate();
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(API_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...moratoireData, rowIndex }),
+    })
+      .then(() => {
+        console.log('✅ Moratoire mis à jour');
+        setTimeout(() => mutate(), 300);
+      })
+      .catch(error => {
+        console.error('❌ Erreur update moratoire:', error);
+        mutate(previousData, false);
+      });
 
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        addPendingOperation({
-          type: OP_TYPES.UPDATE,
-          entity: 'moratoires',
-          data: moratoireData,
-          rowIndex,
-        });
-        return { success: true, offline: true };
-      }
-
-      await mutate(previousData, { revalidate: false });
-      throw error;
-    }
+    return { success: true };
   };
 
   /**
    * Supprimer un moratoire
    */
   const deleteMoratoire = async (rowIndex) => {
+    console.log('🗑️ Deleting moratoire:', rowIndex);
+
     const previousData = data;
 
-    try {
-      await mutate(
-        (currentData) =>
-          currentData?.filter((m) => m.rowIndex !== rowIndex),
-        { revalidate: false }
-      );
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return existing.filter((m) => m.rowIndex !== rowIndex);
+      },
+      false
+    );
 
-      await api.delete(`${API_URL}?rowIndex=${rowIndex}`);
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(`${API_URL}?rowIndex=${rowIndex}`, {
+      method: 'DELETE',
+    })
+      .then(() => {
+        console.log('✅ Moratoire supprimé');
+      })
+      .catch(error => {
+        console.error('❌ Erreur delete moratoire:', error);
+        mutate(previousData, false);
+      });
 
-      return { success: true };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        addPendingOperation({
-          type: OP_TYPES.DELETE,
-          entity: 'moratoires',
-          rowIndex,
-        });
-        return { success: true, offline: true };
-      }
-
-      await mutate(previousData, { revalidate: false });
-      throw error;
-    }
+    return { success: true };
   };
 
-  const refresh = () => mutate();
+  const refresh = () => {
+    console.log('🔄 Manual refresh');
+    return mutate();
+  };
 
   // Stats
   const stats = useMemo(() => ({
-    total: data?.length || 0,
+    total: Array.isArray(data) ? data.length : 0,
     filtered: filteredMoratoires.length,
-    enCours: data?.filter(m => m.STATUT === 'EN COURS').length || 0,
-    termines: data?.filter(m => m.STATUT === 'TERMINÉ').length || 0,
-    enRetard: data?.filter(m => m.STATUT === 'EN RETARD').length || 0,
+    enCours: Array.isArray(data)
+      ? data.filter(m => m.STATUT === 'EN COURS').length
+      : 0,
+    termines: Array.isArray(data)
+      ? data.filter(m => m.STATUT === 'TERMINÉ').length
+      : 0,
+    enRetard: Array.isArray(data)
+      ? data.filter(m => m.STATUT === 'EN RETARD').length
+      : 0,
   }), [data, filteredMoratoires]);
 
   return {
-    // Données
-    moratoires: data || [],
+    moratoires: Array.isArray(data) ? data : [],
     filteredMoratoires,
-    
-    // États
     stats,
     isLoading,
     isValidating,
     error,
-    
-    // Filtres
     dateDebut,
     dateFin,
     setDateDebut,
     setDateFin,
-    setFilterPeriod,
     setFilterPreset,
     clearFilters,
-    
-    // Actions
     addMoratoire,
     updateMoratoire,
     deleteMoratoire,

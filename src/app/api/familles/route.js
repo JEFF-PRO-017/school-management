@@ -2,13 +2,47 @@ import { NextResponse } from 'next/server';
 import { getFamilles, addFamille, updateFamille, deleteFamille } from '@/lib/google-sheets';
 import { logAudit, extractAuditInfo, AUDIT_ACTIONS } from '@/lib/audit';
 
-export async function GET() {
+// Cache en mémoire
+let cacheData = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 5000; // 5 secondes
+
+export async function GET(request) {
   try {
+    // ✅ Vérifier configuration
+    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
+        !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+        !process.env.GOOGLE_PRIVATE_KEY) {
+      return NextResponse.json(
+        { error: 'Configuration Google Sheets manquante' },
+        { status: 500 }
+      );
+    }
+
+    // ✅ Utiliser le cache si frais
+    const now = Date.now();
+    if (cacheData && (now - cacheTimestamp) < CACHE_DURATION) {
+      console.log('✨ Using cache for /api/familles');
+      return NextResponse.json(cacheData);
+    }
+
+    // ✅ Fetch depuis Google Sheets
+    console.log('🔍 Fetching from Google Sheets...');
     const familles = await getFamilles();
+    
+    // ✅ Mettre en cache
+    cacheData = familles;
+    cacheTimestamp = now;
+    
+    console.log(`✅ GET /api/familles: ${familles.length} items`);
     return NextResponse.json(familles);
+    
   } catch (error) {
-    console.error('GET /familles:', error);
-    return NextResponse.json({ error: 'Erreur lors de la récupération' }, { status: 500 });
+    console.error('❌ GET /api/familles:', error.message);
+    return NextResponse.json(
+      { error: 'Erreur lors de la récupération des familles', details: error.message },
+      { status: 500 }
+    );
   }
 }
 
@@ -17,21 +51,38 @@ export async function POST(request) {
   
   try {
     const data = await request.json();
+    
+    console.log('👨‍👩‍👧‍👦 POST /api/familles:', data.nomFamille);
+    
     const result = await addFamille(data);
+    
+    // ✅ Invalider le cache
+    cacheData = null;
     
     await logAudit({
       ...auditInfo,
       action: AUDIT_ACTIONS.CREATE,
       entity: 'familles',
-      entityId: data.nomPere || data.nomMere,
+      entityId: data.nomFamille,
       details: data,
     });
     
-    return NextResponse.json(result);
+    console.log('✅ Famille ajoutée');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('POST /familles:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.CREATE, entity: 'familles', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de l\'ajout' }, { status: 500 });
+    console.error('❌ POST /api/familles:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.CREATE, 
+      entity: 'familles', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de l\'ajout', details: error.message }, 
+      { status: 500 }
+    );
   }
 }
 
@@ -40,7 +91,20 @@ export async function PUT(request) {
   
   try {
     const { rowIndex, ...data } = await request.json();
+    
+    if (!rowIndex) {
+      return NextResponse.json(
+        { error: 'rowIndex requis' }, 
+        { status: 400 }
+      );
+    }
+    
+    console.log('✏️ PUT /api/familles:', rowIndex);
+    
     const result = await updateFamille(rowIndex, data);
+    
+    // ✅ Invalider le cache
+    cacheData = null;
     
     await logAudit({
       ...auditInfo,
@@ -50,11 +114,22 @@ export async function PUT(request) {
       details: data,
     });
     
-    return NextResponse.json(result);
+    console.log('✅ Famille mise à jour');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('PUT /familles:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.UPDATE, entity: 'familles', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de la mise à jour' }, { status: 500 });
+    console.error('❌ PUT /api/familles:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.UPDATE, 
+      entity: 'familles', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de la mise à jour', details: error.message }, 
+      { status: 500 }
+    );
   }
 }
 
@@ -65,10 +140,18 @@ export async function DELETE(request) {
   
   try {
     if (!rowIndex) {
-      return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'rowIndex requis' }, 
+        { status: 400 }
+      );
     }
     
+    console.log('🗑️ DELETE /api/familles:', rowIndex);
+    
     const result = await deleteFamille(parseInt(rowIndex));
+    
+    // ✅ Invalider le cache
+    cacheData = null;
     
     await logAudit({
       ...auditInfo,
@@ -77,10 +160,21 @@ export async function DELETE(request) {
       entityId: `Row ${rowIndex}`,
     });
     
-    return NextResponse.json(result);
+    console.log('✅ Famille supprimée');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('DELETE /familles:', error);
-    await logAudit({ ...auditInfo, action: AUDIT_ACTIONS.DELETE, entity: 'familles', status: 'ERROR', details: error.message });
-    return NextResponse.json({ error: 'Erreur lors de la suppression' }, { status: 500 });
+    console.error('❌ DELETE /api/familles:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.DELETE, 
+      entity: 'familles', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression', details: error.message }, 
+      { status: 500 }
+    );
   }
 }

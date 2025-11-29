@@ -46,7 +46,7 @@ export function useOnlineStatus() {
       console.log('[Network] Online');
       setIsOnline(true);
       // Synchroniser automatiquement à la reconnexion
-      setTimeout(sync, 1000);
+      setTimeout(sync, 10000);
     };
 
     const handleOffline = () => {

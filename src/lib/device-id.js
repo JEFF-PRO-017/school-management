@@ -3,7 +3,7 @@
  * Utilisé pour l'audit des opérations
  */
 
-const DEVICE_ID_KEY = 'school-app-device-id';
+const DEVICE_ID_KEY = 'school-app-device-key';
 const DEVICE_NAME_KEY = 'school-app-device-name';
 
 // Générer un ID unique
@@ -64,7 +64,9 @@ export function getDeviceInfo() {
 
 // Vérifier si c'est un nouvel appareil
 export function isNewDevice() {
+
   if (typeof window === 'undefined') return false;
   
-  return !localStorage.getItem(DEVICE_ID_KEY);
+  console.log(localStorage.getItem(DEVICE_NAME_KEY))
+  return !localStorage.getItem(DEVICE_NAME_KEY);
 }

@@ -1,169 +1,190 @@
 'use client';
 
 /**
- * Hook SWR pour la gestion des paiements
- * - Cache automatique
- * - Mutations optimistes
- * - Support offline
+ * Hook usePaiements - SIMPLIFIÉ
  */
 
 import useSWR from 'swr';
-import { api, NetworkError } from '@/lib/api-client';
-import { addPendingOperation, OP_TYPES } from '@/lib/offline-manager';
 
 const API_URL = '/api/paiements';
 
-// Fetcher
-const fetcher = async (url) => {
-  const data = await api.get(url);
-  return data;
-};
+const fetcher = (url) => fetch(url).then(res => {
+  if (!res.ok) throw new Error('Erreur réseau');
+  return res.json();
+});
 
 export function usePaiements() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
+      dedupingInterval: 10000,
       keepPreviousData: true,
     }
   );
 
   /**
-   * Ajouter un paiement
+   * Ajouter un paiement (individuel ou famille)
    */
   const addPaiement = async (paiementData) => {
-    const tempId = `temp_${Date.now()}`;
+    const today = new Date().toLocaleDateString('fr-FR');
+    
+    // Mode famille: plusieurs paiements
+    if (paiementData.mode === 'famille' && paiementData.paiements) {
+      const newPaiements = paiementData.paiements.map((p, index) => ({
+        'N° TRANS': `temp_${Date.now()}_${index}`,
+        DATE: p.date || today,
+        'ID ÉLÈVE': p.idEleve,
+        'NOM ÉLÈVE': p.nomEleve,
+        'ID FAMILLE': p.idFamille,
+        TYPE: p.type,
+        'MONTANT PAYÉ': p.montantPaye,
+        rowIndex: `temp_${Date.now()}_${index}`,
+        _isOptimistic: true,
+      }));
+
+      console.log('💰 Adding paiements famille:', newPaiements.length);
+
+      // ✨ UI INSTANTANÉE
+      mutate(
+        (current) => {
+          const existing = Array.isArray(current) ? current : [];
+          return [...newPaiements, ...existing];
+        },
+        false
+      );
+
+      // 🚀 BACKEND ASYNCHRONE - Envoyer tous les paiements
+      Promise.all(
+        paiementData.paiements.map(p =>
+          fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(p),
+          })
+        )
+      )
+        .then(() => {
+          console.log('✅ Paiements famille enregistrés');
+          setTimeout(() => mutate(), 300);
+        })
+        .catch(error => {
+          console.error('❌ Erreur paiements famille:', error);
+          mutate();
+        });
+
+      return { success: true, count: newPaiements.length };
+    }
+    
+    // Mode individuel
     const newPaiement = {
-      ...paiementData,
-      rowIndex: tempId,
-      'N° TRANS': tempId,
-      DATE: new Date().toISOString().split('T')[0],
+      'N° TRANS': `temp_${Date.now()}`,
+      DATE: paiementData.date || today,
+      'ID ÉLÈVE': paiementData.idEleve,
+      'NOM ÉLÈVE': paiementData.nomEleve,
+      'ID FAMILLE': paiementData.idFamille,
+      TYPE: paiementData.type,
+      'MONTANT PAYÉ': paiementData.montantPaye,
+      rowIndex: `temp_${Date.now()}`,
       _isOptimistic: true,
     };
 
-    try {
-      // Mise à jour optimiste
-      await mutate(
-        (currentData) => [newPaiement, ...(currentData || [])],
-        { revalidate: false }
-      );
+    console.log('💰 Adding paiement:', newPaiement['NOM ÉLÈVE'], newPaiement['MONTANT PAYÉ']);
 
-      // Appel API
-      const result = await api.post(API_URL, paiementData);
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return [newPaiement, ...existing];
+      },
+      false
+    );
 
-      // Recharger
-      await mutate();
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(paiementData),
+    })
+      .then(() => {
+        console.log('✅ Paiement enregistré');
+        setTimeout(() => mutate(), 300);
+      })
+      .catch(error => {
+        console.error('❌ Erreur paiement:', error);
+        mutate(
+          (current) => {
+            const existing = Array.isArray(current) ? current : [];
+            return existing.filter(p => p.rowIndex !== newPaiement.rowIndex);
+          },
+          false
+        );
+      });
 
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        addPendingOperation({
-          type: OP_TYPES.CREATE,
-          entity: 'paiements',
-          data: paiementData,
-        });
-        return { success: true, offline: true, data: newPaiement };
-      }
-
-      await mutate();
-      throw error;
-    }
-  };
-
-  /**
-   * Mettre à jour un paiement
-   */
-  const updatePaiement = async (rowIndex, paiementData) => {
-    const previousData = data;
-
-    try {
-      await mutate(
-        (currentData) =>
-          currentData?.map((p) =>
-            p.rowIndex === rowIndex
-              ? { ...p, ...paiementData, _isOptimistic: true }
-              : p
-          ),
-        { revalidate: false }
-      );
-
-      const result = await api.put(API_URL, { ...paiementData, rowIndex });
-      await mutate();
-
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        addPendingOperation({
-          type: OP_TYPES.UPDATE,
-          entity: 'paiements',
-          data: paiementData,
-          rowIndex,
-        });
-        return { success: true, offline: true };
-      }
-
-      await mutate(previousData, { revalidate: false });
-      throw error;
-    }
+    return { success: true };
   };
 
   /**
    * Supprimer un paiement
    */
   const deletePaiement = async (rowIndex) => {
+    console.log('🗑️ Deleting paiement:', rowIndex);
+
     const previousData = data;
 
-    try {
-      await mutate(
-        (currentData) =>
-          currentData?.filter((p) => p.rowIndex !== rowIndex),
-        { revalidate: false }
-      );
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return existing.filter((p) => p.rowIndex !== rowIndex);
+      },
+      false
+    );
 
-      await api.delete(`${API_URL}?rowIndex=${rowIndex}`);
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(`${API_URL}?rowIndex=${rowIndex}`, {
+      method: 'DELETE',
+    })
+      .then(() => {
+        console.log('✅ Paiement supprimé');
+      })
+      .catch(error => {
+        console.error('❌ Erreur delete:', error);
+        mutate(previousData, false);
+      });
 
-      return { success: true };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        addPendingOperation({
-          type: OP_TYPES.DELETE,
-          entity: 'paiements',
-          rowIndex,
-        });
-        return { success: true, offline: true };
-      }
-
-      await mutate(previousData, { revalidate: false });
-      throw error;
-    }
+    return { success: true };
   };
 
-  /**
-   * Rafraîchir
-   */
-  const refresh = () => mutate();
+  const refresh = () => {
+    console.log('🔄 Manual refresh');
+    return mutate();
+  };
 
-  // Statistiques calculées
+  // Statistiques
   const stats = {
-    total: data?.length || 0,
-    totalMontant: data?.reduce((sum, p) => sum + (parseFloat(p['MONTANT PAYÉ']) || 0), 0) || 0,
-    parType: data?.reduce((acc, p) => {
-      const type = p.TYPE || 'AUTRE';
-      acc[type] = (acc[type] || 0) + 1;
-      return acc;
-    }, {}) || {},
+    total: Array.isArray(data) ? data.length : 0,
+    totalMontant: Array.isArray(data)
+      ? data.reduce((sum, p) => sum + (parseFloat(p['MONTANT PAYÉ'] || p.montantPaye) || 0), 0)
+      : 0,
+    parType: Array.isArray(data)
+      ? data.reduce((acc, p) => {
+          const type = p.TYPE || p.type || 'AUTRE';
+          acc[type] = (acc[type] || 0) + 1;
+          return acc;
+        }, {})
+      : {},
   };
 
   return {
-    paiements: data || [],
+    paiements: Array.isArray(data) ? data : [],
     stats,
     isLoading,
     isValidating,
     error,
     addPaiement,
-    updatePaiement,
     deletePaiement,
     refresh,
     mutate,

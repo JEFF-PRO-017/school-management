@@ -1,15 +1,48 @@
 import { NextResponse } from 'next/server';
 import { getPaiements, addPaiement, deletePaiement } from '@/lib/google-sheets';
-import { getEleves, updateEleve } from '@/lib/google-sheets';
 import { logAudit, extractAuditInfo, AUDIT_ACTIONS } from '@/lib/audit';
 
-export async function GET() {
+// Cache en mémoire
+let cacheData = null;
+let cacheTimestamp = 0;
+const CACHE_DURATION = 5000; // 5 secondes
+
+export async function GET(request) {
   try {
+    // ✅ Vérifier configuration
+    if (!process.env.GOOGLE_SHEETS_SPREADSHEET_ID ||
+        !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL ||
+        !process.env.GOOGLE_PRIVATE_KEY) {
+      return NextResponse.json(
+        { error: 'Configuration Google Sheets manquante' },
+        { status: 500 }
+      );
+    }
+
+    // ✅ Utiliser le cache si frais
+    const now = Date.now();
+    if (cacheData && (now - cacheTimestamp) < CACHE_DURATION) {
+      console.log('✨ Using cache for /api/paiements');
+      return NextResponse.json(cacheData);
+    }
+
+    // ✅ Fetch depuis Google Sheets
+    console.log('🔍 Fetching from Google Sheets...');
     const paiements = await getPaiements();
+    
+    // ✅ Mettre en cache
+    cacheData = paiements;
+    cacheTimestamp = now;
+    
+    console.log(`✅ GET /api/paiements: ${paiements.length} items`);
     return NextResponse.json(paiements);
+    
   } catch (error) {
-    console.error('GET /paiements:', error);
-    return NextResponse.json({ error: 'Erreur lors de la récupération' }, { status: 500 });
+    console.error('❌ GET /api/paiements:', error.message);
+    return NextResponse.json(
+      { error: 'Erreur lors de la récupération des paiements', details: error.message },
+      { status: 500 }
+    );
   }
 }
 
@@ -19,119 +52,82 @@ export async function POST(request) {
   try {
     const data = await request.json();
     
-    // Vérifier si c'est un paiement famille ou individuel
-    if (data.mode === 'famille' && Array.isArray(data.paiements)) {
-      // Paiement par famille - créer plusieurs paiements
-      const results = [];
-      
-      for (const paiement of data.paiements) {
-        const result = await addPaiement(paiement);
-        results.push(result);
-        
-        // Mettre à jour le solde de l'élève
-        await updateEleveSolde(paiement.idEleve, paiement.montantPaye);
-        
-        // Audit
-        await logAudit({
-          action: AUDIT_ACTIONS.CREATE,
-          entity: 'paiement',
-          entityId: result.rowIndex,
-          details: `Paiement famille: ${paiement.nomEleve} - ${paiement.montantPaye} FCFA`,
-          ...auditInfo,
-        });
-      }
-      
-      return NextResponse.json({ 
-        success: true, 
-        count: results.length,
-        results 
-      });
-      
-    } else {
-      // Paiement individuel
-      const result = await addPaiement(data);
-      
-      // Mettre à jour le solde de l'élève
-      await updateEleveSolde(data.idEleve, data.montantPaye);
-      
-      // Audit
-      await logAudit({
-        action: AUDIT_ACTIONS.CREATE,
-        entity: 'paiement',
-        entityId: result.rowIndex,
-        details: `${data.nomEleve} - ${data.montantPaye} FCFA`,
-        ...auditInfo,
-      });
-      
-      return NextResponse.json(result);
-    }
+    console.log('💰 POST /api/paiements:', data.nomEleve, data.montantPaye);
+    
+    const result = await addPaiement(data);
+    
+    // ✅ Invalider le cache
+    cacheData = null;
+    
+    await logAudit({
+      ...auditInfo,
+      action: AUDIT_ACTIONS.CREATE,
+      entity: 'paiements',
+      entityId: `${data.nomEleve} - ${data.montantPaye}`,
+      details: data,
+    });
+    
+    console.log('✅ Paiement enregistré');
+    return NextResponse.json({ success: true, ...result });
     
   } catch (error) {
-    console.error('POST /paiements:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-}
-
-// Fonction helper pour mettre à jour le solde
-async function updateEleveSolde(idEleve, montantPaye) {
-  const eleves = await getEleves();
-  const eleve = eleves.find(e => e.rowIndex === parseInt(idEleve));
-  
-  if (eleve) {
-    const nouveauPaye = parseFloat(eleve.PAYÉ || 0) + parseFloat(montantPaye);
-    const totalDu = parseFloat(eleve['TOTAL DÛ'] || 0);
-    const nouveauReste = Math.max(0, totalDu - nouveauPaye);
-    
-    let nouveauStatut = 'EN ATTENTE';
-    if (nouveauPaye >= totalDu) nouveauStatut = 'SOLDÉ';
-    else if (nouveauPaye > 0) nouveauStatut = 'PARTIEL';
-    
-    await updateEleve(eleve.rowIndex, {
-      nom: eleve.NOM,
-      prenom: eleve.PRÉNOM,
-      dateNaissance: eleve['DATE NAISS.'],
-      classe: eleve.CLASSE,
-      idFamille: eleve['ID FAMILLE'],
-      inscription: eleve.INSCRIPTION,
-      scolarite: eleve.SCOLARITÉ,
-      dossier: eleve.DOSSIER,
-      autres: eleve.AUTRES,
-      totalDu: eleve['TOTAL DÛ'],
-      paye: nouveauPaye.toString(),
-      reste: nouveauReste.toString(),
-      statut: nouveauStatut,
+    console.error('❌ POST /api/paiements:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.CREATE, 
+      entity: 'paiements', 
+      status: 'ERROR', 
+      details: error.message 
     });
+    return NextResponse.json(
+      { error: 'Erreur lors de l\'enregistrement', details: error.message }, 
+      { status: 500 }
+    );
   }
 }
 
 export async function DELETE(request) {
   const auditInfo = extractAuditInfo(request);
+  const { searchParams } = new URL(request.url);
+  const rowIndex = searchParams.get('rowIndex');
   
   try {
-    const { searchParams } = new URL(request.url);
-    const rowIndex = parseInt(searchParams.get('rowIndex'));
-    
     if (!rowIndex) {
-      return NextResponse.json({ error: 'rowIndex requis' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'rowIndex requis' }, 
+        { status: 400 }
+      );
     }
     
-    const paiements = await getPaiements();
-    const paiement = paiements.find(p => p.rowIndex === rowIndex);
+    console.log('🗑️ DELETE /api/paiements:', rowIndex);
     
-    await deletePaiement(rowIndex);
+    const result = await deletePaiement(parseInt(rowIndex));
     
-    // Audit
+    // ✅ Invalider le cache
+    cacheData = null;
+    
     await logAudit({
-      action: AUDIT_ACTIONS.DELETE,
-      entity: 'paiement',
-      entityId: rowIndex,
-      details: paiement ? `${paiement['NOM ÉLÈVE']} - ${paiement['MONTANT PAYÉ']} FCFA` : 'Paiement supprimé',
       ...auditInfo,
+      action: AUDIT_ACTIONS.DELETE,
+      entity: 'paiements',
+      entityId: `Row ${rowIndex}`,
     });
     
-    return NextResponse.json({ success: true });
+    console.log('✅ Paiement supprimé');
+    return NextResponse.json({ success: true, ...result });
+    
   } catch (error) {
-    console.error('DELETE /paiements:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('❌ DELETE /api/paiements:', error);
+    await logAudit({ 
+      ...auditInfo, 
+      action: AUDIT_ACTIONS.DELETE, 
+      entity: 'paiements', 
+      status: 'ERROR', 
+      details: error.message 
+    });
+    return NextResponse.json(
+      { error: 'Erreur lors de la suppression', details: error.message }, 
+      { status: 500 }
+    );
   }
 }

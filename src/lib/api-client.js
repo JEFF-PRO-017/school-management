@@ -15,7 +15,7 @@ class ApiClient {
   // Headers communs avec infos d'audit
   getHeaders() {
     const deviceInfo = getDeviceInfo();
-    
+
     return {
       'Content-Type': 'application/json',
       'X-Device-Id': deviceInfo.deviceId,
@@ -39,7 +39,7 @@ class ApiClient {
 
       // Parser la réponse
       const data = await response.json();
-
+      console.log('data', data)
       if (!response.ok) {
         throw new ApiError(
           data.error || 'Une erreur est survenue',
@@ -116,7 +116,7 @@ export const apiClient = new ApiClient();
 
 // Fonctions de commodité
 export const api = {
-  get: (url) => apiClient.get(url),
+  get: (url) => { apiClient.get(url) },
   post: (url, data) => apiClient.post(url, data),
   put: (url, data) => apiClient.put(url, data),
   delete: (url) => apiClient.delete(url),

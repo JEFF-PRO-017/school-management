@@ -14,6 +14,7 @@ export function DeviceSetup({ onComplete }) {
   const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
+    
     // Afficher au premier lancement
     if (isNewDevice()) {
       setIsVisible(true);

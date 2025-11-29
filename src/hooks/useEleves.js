@@ -1,181 +1,200 @@
 'use client';
 
 /**
- * Hook SWR pour la gestion des élèves
- * - Cache automatique
- * - Mutations optimistes
- * - Support offline
+ * Hook useEleves - SIMPLIFIÉ
+ * Fetch natif, pas de wrapper api-client
  */
 
 import useSWR from 'swr';
-import { api, NetworkError } from '@/lib/api-client';
-import { addPendingOperation, OP_TYPES } from '@/lib/offline-manager';
 
 const API_URL = '/api/eleves';
 
-// Fetcher avec gestion d'erreur
-const fetcher = async (url) => {
-  const data = await api.get(url);
-  return data;
-};
+// ✅ Fetcher simple avec fetch natif
+const fetcher = (url) => fetch(url).then(res => {
+  if (!res.ok) throw new Error('Erreur réseau');
+  return res.json();
+});
 
 export function useEleves() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
     {
-      // Utiliser le cache si offline
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      // Garder les données obsolètes pendant le rechargement
+      dedupingInterval: 10000,        // ✨ 10s entre requêtes
       keepPreviousData: true,
     }
   );
 
   /**
-   * Ajouter un élève
-   * - Mise à jour optimiste locale
-   * - Sync avec le serveur
-   * - Queue offline si pas de connexion
+   * Ajouter un élève - UI INSTANTANÉE
    */
   const addEleve = async (eleveData) => {
     const tempId = `temp_${Date.now()}`;
     const newEleve = {
-      ...eleveData,
+      NOM: eleveData.nom || '',
+      PRÉNOM: eleveData.prenom || '',
+      'DATE NAISS.': eleveData.dateNaissance || '',
+      CLASSE: eleveData.classe || '',
+      'ID FAMILLE': eleveData.idFamille || '',
+      INSCRIPTION: eleveData.inscription || '10000',
+      PENSION: eleveData.pension || '0',
+      DOSSIER: eleveData.dossier || '0',
+      RÉDUCTION: eleveData.reduction || '0',
+      'MOTIF RÉDUCTION': eleveData.motifReduction || '',
+      'TOTAL DÛ': eleveData.totalDu || '0',
+      PAYÉ: eleveData.paye || '0',
+      RESTE: eleveData.reste || '0',
+      STATUT: eleveData.statut || 'EN ATTENTE',
       rowIndex: tempId,
       _isOptimistic: true,
     };
 
-    try {
-      // Mise à jour optimiste
-      await mutate(
-        (currentData) => [...(currentData || []), newEleve],
-        { revalidate: false }
-      );
+    console.log('➕ Adding élève:', newEleve.NOM, newEleve.PRÉNOM);
 
-      // Appel API
-      const result = await api.post(API_URL, eleveData);
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return [...existing, newEleve];
+      },
+      false
+    );
 
-      // Mettre à jour avec les vraies données
-      await mutate();
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(eleveData),
+    })
+      .then(res => res.json())
+      .then(() => {
+        console.log('✅ Élève ajouté côté serveur');
+        // Refresh après 300ms pour laisser Google Sheets écrire
+        setTimeout(() => mutate(), 300);
+      })
+      .catch(error => {
+        console.error('❌ Erreur ajout:', error);
+        // Rollback: retirer l'élève optimiste
+        mutate(
+          (current) => {
+            const existing = Array.isArray(current) ? current : [];
+            return existing.filter(e => e.rowIndex !== tempId);
+          },
+          false
+        );
+      });
 
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        // Mode offline : ajouter à la queue
-        addPendingOperation({
-          type: OP_TYPES.CREATE,
-          entity: 'eleves',
-          data: eleveData,
-        });
-        return { success: true, offline: true, data: newEleve };
-      }
-
-      // Rollback en cas d'erreur
-      await mutate();
-      throw error;
-    }
+    return { success: true };
   };
 
   /**
-   * Mettre à jour un élève
+   * Mettre à jour un élève - UI INSTANTANÉE
    */
   const updateEleve = async (rowIndex, eleveData) => {
+    console.log('✏️ Updating élève:', rowIndex);
+
+    // Sauvegarder pour rollback
     const previousData = data;
 
-    try {
-      // Mise à jour optimiste
-      await mutate(
-        (currentData) =>
-          currentData?.map((eleve) =>
-            eleve.rowIndex === rowIndex
-              ? { ...eleve, ...eleveData, _isOptimistic: true }
-              : eleve
-          ),
-        { revalidate: false }
-      );
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return existing.map((eleve) =>
+          eleve.rowIndex === rowIndex
+            ? {
+                ...eleve,
+                NOM: eleveData.nom || eleve.NOM,
+                PRÉNOM: eleveData.prenom || eleve.PRÉNOM,
+                'DATE NAISS.': eleveData.dateNaissance || eleve['DATE NAISS.'],
+                CLASSE: eleveData.classe || eleve.CLASSE,
+                'ID FAMILLE': eleveData.idFamille || eleve['ID FAMILLE'],
+                INSCRIPTION: eleveData.inscription || eleve.INSCRIPTION,
+                PENSION: eleveData.pension || eleve.PENSION,
+                DOSSIER: eleveData.dossier || eleve.DOSSIER,
+                RÉDUCTION: eleveData.reduction || eleve.RÉDUCTION,
+                'MOTIF RÉDUCTION': eleveData.motifReduction || eleve['MOTIF RÉDUCTION'],
+                'TOTAL DÛ': eleveData.totalDu || eleve['TOTAL DÛ'],
+                PAYÉ: eleveData.paye || eleve.PAYÉ,
+                RESTE: eleveData.reste || eleve.RESTE,
+                STATUT: eleveData.statut || eleve.STATUT,
+                _isOptimistic: true,
+              }
+            : eleve
+        );
+      },
+      false
+    );
 
-      // Appel API
-      const result = await api.put(API_URL, { ...eleveData, rowIndex });
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(API_URL, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...eleveData, rowIndex }),
+    })
+      .then(res => res.json())
+      .then(() => {
+        console.log('✅ Élève mis à jour côté serveur');
+        setTimeout(() => mutate(), 300);
+      })
+      .catch(error => {
+        console.error('❌ Erreur update:', error);
+        // Rollback
+        mutate(previousData, false);
+      });
 
-      // Recharger les données
-      await mutate();
-
-      return { success: true, data: result };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        // Mode offline
-        addPendingOperation({
-          type: OP_TYPES.UPDATE,
-          entity: 'eleves',
-          data: eleveData,
-          rowIndex,
-        });
-        return { success: true, offline: true };
-      }
-
-      // Rollback
-      await mutate(previousData, { revalidate: false });
-      throw error;
-    }
+    return { success: true };
   };
 
   /**
-   * Supprimer un élève
+   * Supprimer un élève - UI INSTANTANÉE
    */
   const deleteEleve = async (rowIndex) => {
+    console.log('🗑️ Deleting élève:', rowIndex);
+
     const previousData = data;
 
-    try {
-      // Mise à jour optimiste
-      await mutate(
-        (currentData) =>
-          currentData?.filter((eleve) => eleve.rowIndex !== rowIndex),
-        { revalidate: false }
-      );
+    // ✨ UI INSTANTANÉE
+    mutate(
+      (current) => {
+        const existing = Array.isArray(current) ? current : [];
+        return existing.filter((eleve) => eleve.rowIndex !== rowIndex);
+      },
+      false
+    );
 
-      // Appel API
-      await api.delete(`${API_URL}?rowIndex=${rowIndex}`);
+    // 🚀 BACKEND ASYNCHRONE
+    fetch(`${API_URL}?rowIndex=${rowIndex}`, {
+      method: 'DELETE',
+    })
+      .then(() => {
+        console.log('✅ Élève supprimé côté serveur');
+      })
+      .catch(error => {
+        console.error('❌ Erreur delete:', error);
+        // Rollback
+        mutate(previousData, false);
+      });
 
-      return { success: true };
-    } catch (error) {
-      if (error instanceof NetworkError) {
-        // Mode offline
-        addPendingOperation({
-          type: OP_TYPES.DELETE,
-          entity: 'eleves',
-          rowIndex,
-        });
-        return { success: true, offline: true };
-      }
-
-      // Rollback
-      await mutate(previousData, { revalidate: false });
-      throw error;
-    }
+    return { success: true };
   };
 
-  /**
-   * Rafraîchir les données
-   */
-  const refresh = () => mutate();
+  const refresh = () => {
+    console.log('🔄 Manual refresh');
+    return mutate();
+  };
 
   return {
-    // Données
-    eleves: data || [],
-    
-    // États
+    eleves: Array.isArray(data) ? data : [],
     isLoading,
     isValidating,
     error,
-    
-    // Actions
     addEleve,
     updateEleve,
     deleteEleve,
     refresh,
-    
-    // Utilitaires
     mutate,
   };
 }

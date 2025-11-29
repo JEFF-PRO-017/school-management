@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Plus, Users, GraduationCap, AlertCircle, Eye } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -18,6 +18,9 @@ import { usePaiements } from '@/hooks/usePaiements';
 export default function ElevesPage() {
   const router = useRouter();
   
+  // Protection hydratation
+  const [mounted, setMounted] = useState(false);
+  
   // Hooks SWR
   const { 
     eleves, 
@@ -27,7 +30,11 @@ export default function ElevesPage() {
     addEleve, 
     refresh: refreshEleves 
   } = useEleves();
-  
+
+  useEffect(()=>{
+    eleves
+    
+  },[eleves])
   const { familles } = useFamilles();
   const { addPaiement, refresh: refreshPaiements } = usePaiements();
   
@@ -37,6 +44,11 @@ export default function ElevesPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedEleve, setSelectedEleve] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Montage côté client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const handleAddEleve = async (data) => {
     setIsSubmitting(true);
@@ -97,26 +109,28 @@ export default function ElevesPage() {
     refreshPaiements();
   };
   
-  // Configuration des colonnes
+  // Configuration des colonnes - responsive
   const columns = [
     {
       header: 'Élève',
       accessor: 'NOM',
       render: (row) => (
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${
             row._isOptimistic 
               ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' 
               : 'bg-gradient-to-br from-primary-400 to-primary-600'
           }`}>
             {row.NOM?.charAt(0)}{row.PRÉNOM?.charAt(0)}
           </div>
-          <div>
-            <p className="font-semibold text-gray-900">
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">
               {row.NOM} {row.PRÉNOM}
-              {row._isOptimistic && <span className="text-xs text-yellow-600 ml-2">(en attente)</span>}
             </p>
-            <p className="text-xs text-gray-500">{row['DATE NAISS.'] || 'Date non renseignée'}</p>
+            {row._isOptimistic && (
+              <span className="text-xs text-yellow-600">En attente</span>
+            )}
+            <p className="text-xs text-gray-500 sm:hidden">{row.CLASSE}</p>
           </div>
         </div>
       ),
@@ -125,19 +139,9 @@ export default function ElevesPage() {
       header: 'Classe',
       accessor: 'CLASSE',
       render: (row) => (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium">
-          <GraduationCap className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs sm:text-sm font-medium">
+          <GraduationCap className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           {row.CLASSE || '-'}
-        </span>
-      ),
-    },
-    {
-      header: 'Famille',
-      accessor: 'ID FAMILLE',
-      render: (row) => (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 text-gray-700 rounded-lg text-sm">
-          <Users className="w-3.5 h-3.5" />
-          ID: {row['ID FAMILLE'] || '-'}
         </span>
       ),
     },
@@ -145,17 +149,8 @@ export default function ElevesPage() {
       header: 'Total Dû',
       accessor: 'TOTAL DÛ',
       render: (row) => (
-        <span className="font-semibold text-gray-900">
+        <span className="font-semibold text-gray-900 text-xs sm:text-sm">
           {formatCurrency(row['TOTAL DÛ'] || 0)}
-        </span>
-      ),
-    },
-    {
-      header: 'Payé',
-      accessor: 'PAYÉ',
-      render: (row) => (
-        <span className="font-semibold text-green-600">
-          {formatCurrency(row.PAYÉ || 0)}
         </span>
       ),
     },
@@ -165,7 +160,7 @@ export default function ElevesPage() {
       render: (row) => {
         const reste = parseFloat(row.RESTE || 0);
         return (
-          <span className={`font-bold ${reste > 0 ? 'text-red-600' : 'text-green-600'}`}>
+          <span className={`font-bold text-xs sm:text-sm ${reste > 0 ? 'text-red-600' : 'text-green-600'}`}>
             {formatCurrency(reste)}
           </span>
         );
@@ -178,7 +173,8 @@ export default function ElevesPage() {
         const statut = row.STATUT || 'EN ATTENTE';
         return (
           <Badge variant={getStatusColor(statut)} size="sm">
-            {statut}
+            <span className="hidden sm:inline">{statut}</span>
+            <span className="sm:hidden">{statut.substring(0, 3)}</span>
           </Badge>
         );
       },
@@ -186,23 +182,23 @@ export default function ElevesPage() {
     {
       header: 'Actions',
       render: (row) => (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2">
           <button
             onClick={(e) => openPaymentModal(row, e)}
             disabled={row._isOptimistic}
-            className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
+            className="px-2 sm:px-3 py-1 sm:py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50"
           >
-            💰 Payer
+            <span className="hidden sm:inline">💰 Payer</span>
+            <span className="sm:hidden">💰</span>
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
               router.push(`/eleves/${row.rowIndex}`);
             }}
-            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors"
+            className="px-2 sm:px-3 py-1 sm:py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 transition-colors"
           >
-            <Eye className="w-3 h-3 inline mr-1" />
-            Détails
+            <Eye className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
           </button>
         </div>
       ),
@@ -217,13 +213,26 @@ export default function ElevesPage() {
     enAttente: eleves.filter(e => e.STATUT === 'EN ATTENTE' || !e.STATUT).length,
   };
 
+  // Attendre le montage
+  if (!mounted) {
+    return (
+      <div className="space-y-6 p-4">
+        <div className="animate-pulse space-y-4">
+          <div className="h-12 bg-gray-200 rounded"></div>
+          <div className="h-32 bg-gray-200 rounded"></div>
+          <div className="h-64 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    );
+  }
+
   // Affichage du chargement
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-          <p className="text-gray-500">Chargement des élèves...</p>
+          <p className="text-gray-500 text-sm sm:text-base">Chargement des élèves...</p>
         </div>
       </div>
     );
@@ -232,7 +241,7 @@ export default function ElevesPage() {
   // Affichage de l'erreur
   if (error && eleves.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex items-center justify-center h-64 p-4">
         <div className="flex flex-col items-center gap-4 text-center">
           <AlertCircle className="w-12 h-12 text-red-500" />
           <div>
@@ -246,49 +255,50 @@ export default function ElevesPage() {
   }
   
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+    <div className="space-y-4 sm:space-y-6 animate-fade-in p-2 sm:p-0">
+      {/* Header - Responsive */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Gestion des Élèves</h1>
-          <p className="text-gray-600 mt-1">Gérez les inscriptions et suivez les paiements</p>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Gestion des Élèves</h1>
+          <p className="text-gray-600 mt-1 text-sm sm:text-base">Gérez les inscriptions et suivez les paiements</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           <SyncStatus showDetails />
-          <Button onClick={() => setShowAddModal(true)}>
-            <Plus size={20} className="mr-2" />
-            Nouvel élève
+          <Button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-initial">
+            <Plus size={18} className="sm:mr-2" />
+            <span className="hidden sm:inline">Nouvel élève</span>
+            <span className="sm:hidden">Nouveau</span>
           </Button>
         </div>
       </div>
       
       {/* Indicateur de rafraîchissement */}
       {isValidating && (
-        <div className="text-center text-sm text-gray-500">
+        <div className="text-center text-xs sm:text-sm text-gray-500">
           <span className="inline-flex items-center gap-2">
             <div className="w-3 h-3 border-2 border-primary-600 border-t-transparent rounded-full animate-spin" />
-            Mise à jour en cours...
+            Mise à jour...
           </span>
         </div>
       )}
       
-      {/* Stats rapides */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-          <p className="text-sm text-gray-500">Total élèves</p>
-          <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+      {/* Stats rapides - Responsive */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-200 shadow-sm">
+          <p className="text-xs sm:text-sm text-gray-500">Total</p>
+          <p className="text-xl sm:text-2xl font-bold text-gray-900">{stats.total}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-green-200 shadow-sm">
-          <p className="text-sm text-green-600">Soldés</p>
-          <p className="text-2xl font-bold text-green-700">{stats.soldes}</p>
+        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-green-200 shadow-sm">
+          <p className="text-xs sm:text-sm text-green-600">Soldés</p>
+          <p className="text-xl sm:text-2xl font-bold text-green-700">{stats.soldes}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-yellow-200 shadow-sm">
-          <p className="text-sm text-yellow-600">Paiements partiels</p>
-          <p className="text-2xl font-bold text-yellow-700">{stats.partiels}</p>
+        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-yellow-200 shadow-sm">
+          <p className="text-xs sm:text-sm text-yellow-600">Partiels</p>
+          <p className="text-xl sm:text-2xl font-bold text-yellow-700">{stats.partiels}</p>
         </div>
-        <div className="bg-white rounded-xl p-4 border border-red-200 shadow-sm">
-          <p className="text-sm text-red-600">En attente</p>
-          <p className="text-2xl font-bold text-red-700">{stats.enAttente}</p>
+        <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-red-200 shadow-sm">
+          <p className="text-xs sm:text-sm text-red-600">Attente</p>
+          <p className="text-xl sm:text-2xl font-bold text-red-700">{stats.enAttente}</p>
         </div>
       </div>
       
@@ -343,7 +353,7 @@ export default function ElevesPage() {
         )}
       </Modal>
 
-      {/* Modal Détails */}
+      {/* Modal Détails - Responsive */}
       <Modal
         isOpen={showDetailModal}
         onClose={() => {
@@ -354,22 +364,22 @@ export default function ElevesPage() {
         size="lg"
       >
         {selectedEleve && (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* En-tête avec avatar */}
-            <div className="flex items-center gap-4 pb-4 border-b border-gray-200">
-              <div className={`w-16 h-16 rounded-full flex items-center justify-center text-white font-bold text-xl ${
+            <div className="flex items-center gap-3 sm:gap-4 pb-4 border-b border-gray-200">
+              <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl ${
                 selectedEleve._isOptimistic 
                   ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' 
                   : 'bg-gradient-to-br from-primary-400 to-primary-600'
               }`}>
                 {selectedEleve.NOM?.charAt(0)}{selectedEleve.PRÉNOM?.charAt(0)}
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-gray-900">
+              <div className="min-w-0 flex-1">
+                <h3 className="text-lg sm:text-xl font-bold text-gray-900 truncate">
                   {selectedEleve.NOM} {selectedEleve.PRÉNOM}
                 </h3>
-                <p className="text-gray-500">{selectedEleve.CLASSE}</p>
-                <div className="flex items-center gap-2 mt-1">
+                <p className="text-gray-500 text-sm sm:text-base">{selectedEleve.CLASSE}</p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   <Badge variant={getStatusColor(selectedEleve.STATUT)} size="sm">
                     {selectedEleve.STATUT || 'EN ATTENTE'}
                   </Badge>
@@ -380,20 +390,20 @@ export default function ElevesPage() {
               </div>
             </div>
 
-            {/* Informations */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Informations - Responsive */}
+            <div className="grid grid-cols-1 gap-4">
               <div className="space-y-3">
-                <h4 className="font-semibold text-gray-900">Informations personnelles</h4>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between">
+                <h4 className="font-semibold text-gray-900 text-sm sm:text-base">Informations personnelles</h4>
+                <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Date de naissance</span>
                     <span className="font-medium">{selectedEleve['DATE NAISS.'] || '-'}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Classe</span>
                     <span className="font-medium">{selectedEleve.CLASSE || '-'}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">ID Famille</span>
                     <span className="font-medium">{selectedEleve['ID FAMILLE'] || '-'}</span>
                   </div>
@@ -401,26 +411,26 @@ export default function ElevesPage() {
               </div>
 
               <div className="space-y-3">
-                <h4 className="font-semibold text-gray-900">Situation financière</h4>
-                <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-                  <div className="flex justify-between">
+                <h4 className="font-semibold text-gray-900 text-sm sm:text-base">Situation financière</h4>
+                <div className="bg-gray-50 rounded-lg p-3 sm:p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Inscription</span>
                     <span className="font-medium">{formatCurrency(selectedEleve.INSCRIPTION || 0)}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Scolarité</span>
                     <span className="font-medium">{formatCurrency(selectedEleve.SCOLARITÉ || 0)}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Dossier</span>
                     <span className="font-medium">{formatCurrency(selectedEleve.DOSSIER || 0)}</span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Autres</span>
                     <span className="font-medium">{formatCurrency(selectedEleve.AUTRES || 0)}</span>
                   </div>
                   <div className="border-t border-gray-300 pt-2 mt-2">
-                    <div className="flex justify-between text-lg">
+                    <div className="flex justify-between text-base sm:text-lg">
                       <span className="font-semibold">Total dû</span>
                       <span className="font-bold">{formatCurrency(selectedEleve['TOTAL DÛ'] || 0)}</span>
                     </div>
@@ -430,25 +440,25 @@ export default function ElevesPage() {
             </div>
 
             {/* Résumé des paiements */}
-            <div className="bg-gradient-to-r from-primary-50 to-green-50 rounded-xl p-6">
-              <div className="grid grid-cols-3 gap-4 text-center">
+            <div className="bg-gradient-to-r from-primary-50 to-green-50 rounded-xl p-4 sm:p-6">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 text-center">
                 <div>
-                  <p className="text-sm text-gray-600">Total dû</p>
-                  <p className="text-xl font-bold text-gray-900">{formatCurrency(selectedEleve['TOTAL DÛ'] || 0)}</p>
+                  <p className="text-xs sm:text-sm text-gray-600">Total dû</p>
+                  <p className="text-base sm:text-xl font-bold text-gray-900">{formatCurrency(selectedEleve['TOTAL DÛ'] || 0)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-green-600">Payé</p>
-                  <p className="text-xl font-bold text-green-700">{formatCurrency(selectedEleve.PAYÉ || 0)}</p>
+                  <p className="text-xs sm:text-sm text-green-600">Payé</p>
+                  <p className="text-base sm:text-xl font-bold text-green-700">{formatCurrency(selectedEleve.PAYÉ || 0)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-red-600">Reste</p>
-                  <p className="text-xl font-bold text-red-700">{formatCurrency(selectedEleve.RESTE || 0)}</p>
+                  <p className="text-xs sm:text-sm text-red-600">Reste</p>
+                  <p className="text-base sm:text-xl font-bold text-red-700">{formatCurrency(selectedEleve.RESTE || 0)}</p>
                 </div>
               </div>
 
               {/* Barre de progression */}
               <div className="mt-4">
-                <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                <div className="h-2 sm:h-3 bg-gray-200 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
                     style={{ 
@@ -456,14 +466,14 @@ export default function ElevesPage() {
                     }}
                   />
                 </div>
-                <p className="text-center text-sm text-gray-600 mt-2">
+                <p className="text-center text-xs sm:text-sm text-gray-600 mt-2">
                   {Math.round((parseFloat(selectedEleve.PAYÉ || 0) / parseFloat(selectedEleve['TOTAL DÛ'] || 1)) * 100)}% payé
                 </p>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex gap-3 pt-4 border-t border-gray-200">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 border-t border-gray-200">
               <Button 
                 variant="success" 
                 onClick={() => {
