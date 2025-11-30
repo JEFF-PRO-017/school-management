@@ -1,415 +1,590 @@
 'use client';
 
 /**
- * Page de détail d'un élève
- * Affiche toutes les informations et l'historique des paiements
+ * Page de gestion des élèves - Mobile First Ultra Simple
+ * Optimisé pour Android avec édition en modal
  */
 
-import { useParams, useRouter } from 'next/navigation';
-import { useState, useMemo } from 'react';
-import { 
-  ArrowLeft, 
-  User, 
-  GraduationCap, 
-  Users, 
-  Calendar,
-  CreditCard,
-  Edit,
-  Trash2,
-  Plus,
-  AlertCircle,
-  CheckCircle,
-  Clock,
-  Phone,
-  Mail
-} from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { Plus, GraduationCap, Eye, Edit, X, Save } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import TableAdvanced from '@/components/ui/TableAdvanced';
+import { SyncStatus } from '@/components/ui/SyncStatus';
+import EleveForm from '@/components/features/EleveForm';
 import PaiementForm from '@/components/features/PaiementForm';
 import { formatCurrency, getStatusColor } from '@/lib/utils';
 import { useEleves } from '@/hooks/useEleves';
-import { usePaiements } from '@/hooks/usePaiements';
 import { useFamilles } from '@/hooks/useFamilles';
+import { usePaiements } from '@/hooks/usePaiements';
 
-export default function ShowElevePage() {
-  const params = useParams();
+export default function ElevesPage() {
   const router = useRouter();
-  const eleveId = parseInt(params.id);
-
+  
+  // Protection hydratation
+  const [mounted, setMounted] = useState(false);
+  
   // Hooks SWR
-  const { eleves, isLoading: loadingEleves, updateEleve, deleteEleve } = useEleves();
-  const { paiements, isLoading: loadingPaiements, addPaiement } = usePaiements();
+  const { 
+    eleves, 
+    isLoading, 
+    addEleve,
+    updateEleve,
+    refresh: refreshEleves 
+  } = useEleves();
+  
   const { familles } = useFamilles();
-
+  const { addPaiement, refresh: refreshPaiements } = usePaiements();
+  
   // États locaux
+  const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [selectedEleve, setSelectedEleve] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  // Trouver l'élève
-  const eleve = useMemo(() => 
-    eleves.find(e => e.rowIndex === eleveId),
-    [eleves, eleveId]
-  );
-
-  // Trouver la famille
-  const famille = useMemo(() => {
-    if (!eleve) return null;
-    return familles.find(f => f.ID === eleve['ID FAMILLE'] || f['ID FAMILLE'] === eleve['ID FAMILLE']);
-  }, [eleve, familles]);
-
-  // Paiements de cet élève
-  const elevePaiements = useMemo(() => {
-    if (!eleve) return [];
-    return paiements.filter(p => 
-      p['ID ÉLÈVE'] === eleve.rowIndex?.toString() ||
-      p['NOM ÉLÈVE']?.toLowerCase().includes(eleve.NOM?.toLowerCase())
-    ).sort((a, b) => {
-      const dateA = new Date(a.DATE?.split('/').reverse().join('-') || 0);
-      const dateB = new Date(b.DATE?.split('/').reverse().join('-') || 0);
-      return dateB - dateA;
-    });
-  }, [paiements, eleve]);
-
-  // Gérer le paiement
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState(null);
+  
+  // Montage côté client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  
+  const handleAddEleve = async (data) => {
+    setIsSubmitting(true);
+    try {
+      const result = await addEleve(data);
+      setShowAddModal(false);
+      
+      if (result.offline) {
+        alert('Élève ajouté localement.');
+      } else {
+        alert('Élève ajouté avec succès !');
+      }
+    } catch (error) {
+      alert('Erreur lors de l\'ajout');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
+  const handleUpdateEleve = async () => {
+    if (!editData || !selectedEleve) return;
+    
+    setIsSubmitting(true);
+    try {
+      await updateEleve(selectedEleve.rowIndex, editData);
+      setIsEditing(false);
+      setEditData(null);
+      alert('Élève mis à jour avec succès !');
+      
+      // Rafraîchir et fermer
+      await refreshEleves();
+      setShowDetailModal(false);
+      setSelectedEleve(null);
+    } catch (error) {
+      alert('Erreur lors de la mise à jour');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+  
   const handlePayment = async (data) => {
     setIsSubmitting(true);
     try {
-      await addPaiement(data);
+      const result = await addPaiement(data);
+      await refreshEleves();
+      
       setShowPaymentModal(false);
-      alert('Paiement enregistré avec succès !');
+      setSelectedEleve(null);
+      
+      if (result.offline) {
+        alert('Paiement enregistré localement.');
+      } else {
+        alert('Paiement enregistré avec succès !');
+      }
     } catch (error) {
-      alert('Erreur lors de l\'enregistrement');
+      alert('Erreur lors du paiement');
     } finally {
       setIsSubmitting(false);
     }
   };
-
-  // Supprimer l'élève
-  const handleDelete = async () => {
-    setIsSubmitting(true);
-    try {
-      await deleteEleve(eleveId);
-      router.push('/eleves');
-    } catch (error) {
-      alert('Erreur lors de la suppression');
-    } finally {
-      setIsSubmitting(false);
-    }
+  
+  const openPaymentModal = (eleve, e) => {
+    e?.stopPropagation();
+    setSelectedEleve(eleve);
+    setShowPaymentModal(true);
   };
 
-  // Colonnes pour les paiements
-  const paiementsColumns = [
+  const openDetailModal = (eleve) => {
+    setSelectedEleve(eleve);
+    setEditData({
+      NOM: eleve.NOM,
+      PRÉNOM: eleve.PRÉNOM,
+      CLASSE: eleve.CLASSE,
+      'DATE NAISS.': eleve['DATE NAISS.'],
+      'ID FAMILLE': eleve['ID FAMILLE'],
+    });
+    setIsEditing(false);
+    setShowDetailModal(true);
+  };
+
+  const handleRefresh = () => {
+    refreshEleves();
+    refreshPaiements();
+  };
+  
+  // Colonnes du tableau
+  const columns = [
     {
-      header: 'Date',
-      accessor: 'DATE',
+      header: 'Élève',
+      accessor: 'NOM',
       render: (row) => (
         <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-gray-400" />
-          <span>{row.DATE}</span>
+          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+            {row.NOM?.charAt(0)}{row.PRÉNOM?.charAt(0)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold text-gray-900 text-sm truncate">
+              {row.NOM} {row.PRÉNOM}
+            </p>
+            <p className="text-xs text-gray-500 sm:hidden">{row.CLASSE}</p>
+          </div>
         </div>
       ),
     },
     {
-      header: 'N° Trans',
-      accessor: 'N° TRANS',
+      header: 'Classe',
+      accessor: 'CLASSE',
       render: (row) => (
-        <Badge variant="gray" size="sm">#{row['N° TRANS']}</Badge>
-      ),
-    },
-    {
-      header: 'Type',
-      accessor: 'TYPE',
-      render: (row) => {
-        const colors = {
-          ESPECES: 'success',
-          CHEQUE: 'primary',
-          VIREMENT: 'warning',
-          MOBILE_MONEY: 'primary',
-        };
-        return <Badge variant={colors[row.TYPE] || 'gray'} size="sm">{row.TYPE}</Badge>;
-      },
-    },
-    {
-      header: 'Montant',
-      accessor: 'MONTANT PAYÉ',
-      render: (row) => (
-        <span className="font-bold text-green-600">
-          {formatCurrency(row['MONTANT PAYÉ'])}
+        <span className="hidden sm:inline-flex items-center gap-1 px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-medium">
+          <GraduationCap className="w-3 h-3" />
+          {row.CLASSE || '-'}
         </span>
       ),
     },
+    {
+      header: 'Reste',
+      accessor: 'RESTE',
+      render: (row) => {
+        const reste = parseFloat(row.RESTE || 0);
+        return (
+          <span className={`font-bold text-sm ${reste > 0 ? 'text-red-600' : 'text-green-600'}`}>
+            {formatCurrency(reste, true)}
+          </span>
+        );
+      },
+    },
+    {
+      header: 'Statut',
+      accessor: 'STATUT',
+      render: (row) => {
+        const statut = row.STATUT || 'EN ATTENTE';
+        return (
+          <Badge variant={getStatusColor(statut)} size="sm">
+            <span className="hidden sm:inline">{statut}</span>
+            <span className="sm:hidden">{statut.substring(0, 3)}</span>
+          </Badge>
+        );
+      },
+    },
+    {
+      header: 'Actions',
+      render: (row) => (
+        <div className="flex items-center gap-1">
+          <button
+            onClick={(e) => openPaymentModal(row, e)}
+            className="px-2 py-1.5 bg-green-600 text-white text-xs font-medium rounded-lg hover:bg-green-700 active:scale-95"
+          >
+            💰
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              openDetailModal(row);
+            }}
+            className="px-2 py-1.5 bg-gray-100 text-gray-700 text-xs font-medium rounded-lg hover:bg-gray-200 active:scale-95"
+          >
+            <Eye className="w-3 h-3" />
+          </button>
+        </div>
+      ),
+    },
   ];
+  
+  // Statistiques
+  const stats = {
+    total: eleves.length,
+    soldes: eleves.filter(e => e.STATUT === 'SOLDÉ').length,
+    partiels: eleves.filter(e => e.STATUT === 'PARTIEL').length,
+    enAttente: eleves.filter(e => e.STATUT === 'EN ATTENTE' || !e.STATUT).length,
+  };
 
-  // Chargement
-  if (loadingEleves || loadingPaiements) {
+  // Attendre le montage
+  if (!mounted) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="space-y-4 p-3 sm:p-0">
+        <div className="animate-pulse space-y-4">
+          <div className="h-16 bg-gray-200 rounded-xl"></div>
+          <div className="h-32 bg-gray-200 rounded-xl"></div>
+          <div className="h-48 bg-gray-200 rounded-xl"></div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
         <div className="flex flex-col items-center gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-          <p className="text-gray-500">Chargement...</p>
+          <p className="text-gray-500 text-sm">Chargement...</p>
         </div>
       </div>
     );
   }
-
-  // Élève non trouvé
-  if (!eleve) {
-    return (
-      <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <AlertCircle className="w-16 h-16 text-red-500" />
-        <h2 className="text-xl font-bold text-gray-900">Élève non trouvé</h2>
-        <p className="text-gray-500">L'élève demandé n'existe pas ou a été supprimé.</p>
-        <Button onClick={() => router.push('/eleves')}>
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Retour à la liste
+  
+  return (
+    <div className="space-y-4 sm:space-y-6 animate-fade-in p-3 sm:p-0">
+      {/* Header */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Élèves</h1>
+            <p className="text-gray-600 text-xs sm:text-sm mt-1">{stats.total} élèves</p>
+          </div>
+          <SyncStatus />
+        </div>
+        
+        <Button 
+          onClick={() => setShowAddModal(true)}
+          className="w-full py-4 text-base font-semibold shadow-lg"
+        >
+          <Plus className="w-5 h-5 mr-2" />
+          Nouvel élève
         </Button>
       </div>
-    );
-  }
-
-  // Calculs
-  const totalDu = parseFloat(eleve['TOTAL DÛ'] || 0);
-  const paye = parseFloat(eleve.PAYÉ || 0);
-  const reste = parseFloat(eleve.RESTE || 0);
-  const pourcentage = totalDu > 0 ? Math.round((paye / totalDu) * 100) : 0;
-
-  return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => router.push('/eleves')}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          <ArrowLeft className="w-5 h-5" />
-          <span>Retour aux élèves</span>
-        </button>
-        <div className="flex items-center gap-2">
-          <Button variant="success" onClick={() => setShowPaymentModal(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Nouveau paiement
-          </Button>
-          <Button variant="danger" onClick={() => setShowDeleteModal(true)}>
-            <Trash2 className="w-4 h-4" />
-          </Button>
+      
+      {/* Stats en grille 2x2 */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+        <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-md">
+          <p className="text-xs sm:text-sm text-gray-500 font-medium mb-2">Total</p>
+          <p className="text-2xl sm:text-3xl font-bold text-gray-900">{stats.total}</p>
+        </div>
+        
+        <div className="bg-white rounded-xl p-4 border border-green-200 shadow-md">
+          <p className="text-xs sm:text-sm text-green-600 font-medium mb-2">Soldés</p>
+          <p className="text-2xl sm:text-3xl font-bold text-green-700">{stats.soldes}</p>
+        </div>
+        
+        <div className="bg-white rounded-xl p-4 border border-yellow-200 shadow-md">
+          <p className="text-xs sm:text-sm text-yellow-600 font-medium mb-2">Partiels</p>
+          <p className="text-2xl sm:text-3xl font-bold text-yellow-700">{stats.partiels}</p>
+        </div>
+        
+        <div className="bg-white rounded-xl p-4 border border-red-200 shadow-md">
+          <p className="text-xs sm:text-sm text-red-600 font-medium mb-2">Attente</p>
+          <p className="text-2xl sm:text-3xl font-bold text-red-700">{stats.enAttente}</p>
         </div>
       </div>
-
-      {/* Carte principale */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        {/* En-tête avec avatar */}
-        <div className="bg-gradient-to-r from-primary-500 to-primary-600 px-6 py-8">
-          <div className="flex items-center gap-6">
-            <div className="w-24 h-24 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-white font-bold text-3xl border-4 border-white/30">
-              {eleve.NOM?.charAt(0)}{eleve.PRÉNOM?.charAt(0)}
-            </div>
-            <div className="text-white">
-              <h1 className="text-3xl font-bold">{eleve.NOM} {eleve.PRÉNOM}</h1>
-              <div className="flex items-center gap-4 mt-2 opacity-90">
-                <span className="flex items-center gap-1">
-                  <GraduationCap className="w-4 h-4" />
-                  {eleve.CLASSE || 'Non assigné'}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Calendar className="w-4 h-4" />
-                  {eleve['DATE NAISS.'] || 'Date non renseignée'}
-                </span>
-              </div>
-              <div className="mt-3">
-                <Badge 
-                  variant={eleve.STATUT === 'SOLDÉ' ? 'success' : eleve.STATUT === 'PARTIEL' ? 'warning' : 'danger'}
-                  size="lg"
-                >
-                  {eleve.STATUT || 'EN ATTENTE'}
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Contenu */}
-        <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Informations personnelles */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <User className="w-5 h-5 text-primary-600" />
-              Informations personnelles
-            </h3>
-            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-              <InfoRow label="Nom" value={eleve.NOM} />
-              <InfoRow label="Prénom" value={eleve.PRÉNOM} />
-              <InfoRow label="Date de naissance" value={eleve['DATE NAISS.']} />
-              <InfoRow label="Classe" value={eleve.CLASSE} />
-              <InfoRow label="ID Famille" value={eleve['ID FAMILLE']} />
-            </div>
-
-            {/* Infos famille */}
-            {famille && (
-              <>
-                <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2 pt-4">
-                  <Users className="w-5 h-5 text-primary-600" />
-                  Famille
-                </h3>
-                <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-                  <InfoRow label="Nom famille" value={famille['NOM FAMILLE'] || famille.NOM_FAMILLE} />
-                  <InfoRow 
-                    label="Contact" 
-                    value={famille.CONTACT || famille.TELEPHONE}
-                    icon={<Phone className="w-4 h-4" />}
-                  />
-                  <InfoRow 
-                    label="Email" 
-                    value={famille.EMAIL}
-                    icon={<Mail className="w-4 h-4" />}
-                  />
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* Situation financière */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-primary-600" />
-              Frais de scolarité
-            </h3>
-            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
-              <InfoRow label="Inscription" value={formatCurrency(eleve.INSCRIPTION || 0)} />
-              <InfoRow label="Scolarité" value={formatCurrency(eleve.SCOLARITÉ || 0)} />
-              <InfoRow label="Dossier" value={formatCurrency(eleve.DOSSIER || 0)} />
-              <InfoRow label="Autres frais" value={formatCurrency(eleve.AUTRES || 0)} />
-              <div className="border-t border-gray-300 pt-3 mt-3">
-                <InfoRow 
-                  label="Total dû" 
-                  value={formatCurrency(totalDu)} 
-                  valueClass="text-lg font-bold text-gray-900"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Résumé paiements */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-              <CheckCircle className="w-5 h-5 text-green-600" />
-              Résumé des paiements
-            </h3>
-            <div className="bg-gradient-to-br from-green-50 to-primary-50 rounded-xl p-6">
-              <div className="text-center mb-4">
-                <div className="text-4xl font-bold text-gray-900">{pourcentage}%</div>
-                <div className="text-sm text-gray-600">payé</div>
-              </div>
-              
-              {/* Barre de progression circulaire simplifiée */}
-              <div className="h-4 bg-gray-200 rounded-full overflow-hidden mb-4">
-                <div 
-                  className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
-                  style={{ width: `${pourcentage}%` }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-white/60 rounded-lg">
-                  <div className="text-lg font-bold text-green-600">{formatCurrency(paye)}</div>
-                  <div className="text-xs text-gray-600">Payé</div>
-                </div>
-                <div className="text-center p-3 bg-white/60 rounded-lg">
-                  <div className="text-lg font-bold text-red-600">{formatCurrency(reste)}</div>
-                  <div className="text-xs text-gray-600">Reste</div>
-                </div>
-              </div>
-
-              <Button 
-                variant="success" 
-                fullWidth 
-                className="mt-4"
-                onClick={() => setShowPaymentModal(true)}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Enregistrer un paiement
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Historique des paiements */}
+      
+      {/* Tableau */}
       <TableAdvanced
-        columns={paiementsColumns}
-        data={elevePaiements}
-        title="Historique des paiements"
-        subtitle={`${elevePaiements.length} paiement(s) enregistré(s)`}
-        emptyMessage="Aucun paiement enregistré pour cet élève"
+        columns={columns}
+        data={eleves}
+        onRowClick={openDetailModal}
+        title="Liste des élèves"
+        subtitle="Cliquez pour voir les détails"
+        emptyMessage="Aucun élève enregistré"
         exportable={true}
+        refreshable={true}
+        onRefresh={handleRefresh}
       />
-
-      {/* Modal Paiement */}
+      
+      {/* Modal Ajout */}
       <Modal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        title="Enregistrer un paiement"
-        size="md"
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Nouvel élève"
+        size="lg"
       >
-        <PaiementForm
-          eleve={eleve}
-          onSubmit={handlePayment}
-          onCancel={() => setShowPaymentModal(false)}
+        <EleveForm
+          familles={familles}
+          onSubmit={handleAddEleve}
+          onCancel={() => setShowAddModal(false)}
           isLoading={isSubmitting}
         />
       </Modal>
-
-      {/* Modal Suppression */}
+      
+      {/* Modal Paiement */}
       <Modal
-        isOpen={showDeleteModal}
-        onClose={() => setShowDeleteModal(false)}
-        title="Confirmer la suppression"
-        size="sm"
+        isOpen={showPaymentModal}
+        onClose={() => {
+          setShowPaymentModal(false);
+          setSelectedEleve(null);
+        }}
+        title="Nouveau paiement"
+        size="md"
       >
-        <div className="text-center py-4">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Trash2 className="w-8 h-8 text-red-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">
-            Supprimer {eleve.NOM} {eleve.PRÉNOM} ?
-          </h3>
-          <p className="text-gray-500 mb-6">
-            Cette action est irréversible. Toutes les données de cet élève seront supprimées.
-          </p>
-          <div className="flex gap-3">
-            <Button 
-              variant="ghost" 
-              fullWidth 
-              onClick={() => setShowDeleteModal(false)}
-            >
-              Annuler
-            </Button>
-            <Button 
-              variant="danger" 
-              fullWidth 
-              onClick={handleDelete}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? 'Suppression...' : 'Supprimer'}
-            </Button>
-          </div>
-        </div>
+        {selectedEleve && (
+          <PaiementForm
+            eleve={selectedEleve}
+            onSubmit={handlePayment}
+            onCancel={() => {
+              setShowPaymentModal(false);
+              setSelectedEleve(null);
+            }}
+            isLoading={isSubmitting}
+          />
+        )}
       </Modal>
-    </div>
-  );
-}
 
-// Composant pour afficher une ligne d'info
-function InfoRow({ label, value, icon, valueClass = '' }) {
-  return (
-    <div className="flex justify-between items-center">
-      <span className="text-gray-600 flex items-center gap-2">
-        {icon}
-        {label}
-      </span>
-      <span className={`font-medium ${valueClass}`}>{value || '-'}</span>
+      {/* Modal Détails SIMPLIFIÉ */}
+      <Modal
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false);
+          setSelectedEleve(null);
+          setIsEditing(false);
+          setEditData(null);
+        }}
+        title={isEditing ? "Modifier l'élève" : "Détails de l'élève"}
+        size="md"
+      >
+        {selectedEleve && (
+          <div className="space-y-4">
+            {/* Avatar + Nom */}
+            <div className="flex items-center gap-3 pb-4 border-b">
+              <div className="w-14 h-14 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-xl flex-shrink-0">
+                {selectedEleve.NOM?.charAt(0)}{selectedEleve.PRÉNOM?.charAt(0)}
+              </div>
+              <div className="flex-1 min-w-0">
+                {!isEditing ? (
+                  <>
+                    <h3 className="text-xl font-bold text-gray-900 truncate">
+                      {selectedEleve.NOM} {selectedEleve.PRÉNOM}
+                    </h3>
+                    <p className="text-gray-500">{selectedEleve.CLASSE}</p>
+                  </>
+                ) : (
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={editData.NOM}
+                      onChange={(e) => setEditData({...editData, NOM: e.target.value})}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"
+                      placeholder="Nom"
+                    />
+                    <input
+                      type="text"
+                      value={editData.PRÉNOM}
+                      onChange={(e) => setEditData({...editData, PRÉNOM: e.target.value})}
+                      className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"
+                      placeholder="Prénom"
+                    />
+                  </div>
+                )}
+              </div>
+              {!isEditing && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg active:scale-95"
+                >
+                  {/* <Edit className="w-5 h-5" /> */}
+                </button>
+              )}
+            </div>
+
+            {/* Infos - Mode Lecture */}
+            {!isEditing && (
+              <>
+                {/* Infos de base */}
+                <div className="bg-gray-50 rounded-xl p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Classe</span>
+                    <span className="font-medium">{selectedEleve.CLASSE || '-'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Date naiss.</span>
+                    <span className="font-medium">{selectedEleve['DATE NAISS.'] || '-'}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Famille</span>
+                    <span className="font-medium">{selectedEleve['ID FAMILLE'] || '-'}</span>
+                  </div>
+                </div>
+
+                {/* Situation financière */}
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl p-4 border-2 border-green-200">
+                  <div className="grid grid-cols-3 gap-2 text-center mb-3">
+                    <div>
+                      <p className="text-xs text-gray-600">Total</p>
+                      <p className="text-lg font-bold text-gray-900">
+                        {formatCurrency(selectedEleve['TOTAL DÛ'], true)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-green-600">Payé</p>
+                      <p className="text-lg font-bold text-green-700">
+                        {formatCurrency(selectedEleve.PAYÉ, true)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-red-600">Reste</p>
+                      <p className="text-lg font-bold text-red-700">
+                        {formatCurrency(selectedEleve.RESTE, true)}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Barre de progression */}
+                  <div className="space-y-2">
+                    <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
+                        style={{ 
+                          width: `${Math.min(100, (parseFloat(selectedEleve.PAYÉ || 0) / parseFloat(selectedEleve['TOTAL DÛ'] || 1)) * 100)}%` 
+                        }}
+                      />
+                    </div>
+                    <p className="text-center text-xs text-gray-600">
+                      {Math.round((parseFloat(selectedEleve.PAYÉ || 0) / parseFloat(selectedEleve['TOTAL DÛ'] || 1)) * 100)}% payé
+                    </p>
+                  </div>
+                </div>
+
+                {/* Statut */}
+                <div className="flex justify-center">
+                  <Badge variant={getStatusColor(selectedEleve.STATUT)} size="lg">
+                    {selectedEleve.STATUT || 'EN ATTENTE'}
+                  </Badge>
+                </div>
+              </>
+            )}
+
+            {/* Infos - Mode Édition */}
+            {isEditing && editData && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Classe</label>
+                  <select
+                    value={editData.CLASSE}
+                    onChange={(e) => setEditData({...editData, CLASSE: e.target.value})}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"
+                  >
+                    <optgroup label="Maternelle">
+                      <option>NURSERY 1</option>
+                      <option>NURSERY 2</option>
+                      <option>MATERNELLE</option>
+                    </optgroup>
+                    <optgroup label="Primaire">
+                      <option>SIL</option>
+                      <option>CP</option>
+                      <option>CE1</option>
+                      <option>CE2</option>
+                      <option>CM1</option>
+                      <option>CM2</option>
+                    </optgroup>
+                    <optgroup label="Secondaire">
+                      <option>CLASSE 1</option>
+                      <option>CLASSE 2</option>
+                      <option>CLASSE 3</option>
+                      <option>CLASSE 4</option>
+                      <option>CLASSE 5</option>
+                      <option>CLASSE 6</option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Date naissance</label>
+                  <input
+                    type="date"
+                    value={editData['DATE NAISS.']}
+                    onChange={(e) => setEditData({...editData, 'DATE NAISS.': e.target.value})}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Famille</label>
+                  <select
+                    value={editData['ID FAMILLE']}
+                    onChange={(e) => setEditData({...editData, 'ID FAMILLE': e.target.value})}
+                    className="w-full px-3 py-2 border-2 border-gray-300 rounded-lg text-sm"
+                  >
+                    <option value="">Sans famille</option>
+                    {familles.map(f => (
+                      <option key={f.rowIndex} value={f.ID || f['ID FAMILLE']}>
+                        {f['NOM FAMILLE'] || f.NOM_FAMILLE}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex flex-col gap-2 pt-4 border-t">
+              {!isEditing ? (
+                <>
+                  <Button 
+                    variant="success" 
+                    onClick={() => {
+                      setShowDetailModal(false);
+                      openPaymentModal(selectedEleve);
+                    }}
+                    fullWidth
+                    className="py-3"
+                  >
+                    💰 Enregistrer un paiement
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setShowDetailModal(false)}
+                    fullWidth
+                    className="py-3"
+                  >
+                    Fermer
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button 
+                    onClick={handleUpdateEleve}
+                    disabled={isSubmitting}
+                    fullWidth
+                    className="py-3"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditData({
+                        NOM: selectedEleve.NOM,
+                        PRÉNOM: selectedEleve.PRÉNOM,
+                        CLASSE: selectedEleve.CLASSE,
+                        'DATE NAISS.': selectedEleve['DATE NAISS.'],
+                        'ID FAMILLE': selectedEleve['ID FAMILLE'],
+                      });
+                    }}
+                    fullWidth
+                    className="py-3"
+                  >
+                    <X className="w-4 h-4 mr-2" />
+                    Annuler
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

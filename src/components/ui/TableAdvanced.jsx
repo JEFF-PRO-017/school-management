@@ -30,6 +30,10 @@ export default function TableAdvanced({
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [globalSearch, setGlobalSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
+  const [visibleColumns, setVisibleColumns] = useState(() => 
+    columns.map((_, idx) => idx)
+  );
+  const [showColumnSelector, setShowColumnSelector] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -202,16 +206,103 @@ export default function TableAdvanced({
                 <span className="hidden sm:inline">Exporter</span>
               </button>
             )}
+
+            {/* Sélecteur de colonnes */}
+            <button
+              onClick={() => setShowColumnSelector(true)}
+              className="p-2 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 transition-all active:scale-95"
+              title="Colonnes"
+            >
+              <Filter className="w-4 h-4 sm:w-5 sm:h-5" />
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Modal sélecteur de colonnes - Plein écran sur mobile */}
+      {showColumnSelector && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div 
+            className="bg-white w-full h-auto max-h-[80vh] sm:max-h-[600px] sm:max-w-md sm:rounded-2xl rounded-t-2xl overflow-hidden shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white sticky top-0 z-10">
+              <h3 className="text-lg font-bold text-gray-900">Colonnes visibles</h3>
+              <button
+                onClick={() => setShowColumnSelector(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg active:scale-95"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+
+            {/* Liste des colonnes */}
+            <div className="overflow-y-auto p-4 space-y-2" style={{ maxHeight: 'calc(80vh - 120px)' }}>
+              {columns.map((col, idx) => (
+                <label 
+                  key={idx} 
+                  className="flex items-center gap-3 p-4 bg-gray-50 hover:bg-gray-100 rounded-xl cursor-pointer active:scale-98 transition-all border-2 border-transparent"
+                  style={{
+                    borderColor: visibleColumns.includes(idx) ? '#3b82f6' : 'transparent',
+                    backgroundColor: visibleColumns.includes(idx) ? '#eff6ff' : '#f9fafb'
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={visibleColumns.includes(idx)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setVisibleColumns([...visibleColumns, idx].sort((a, b) => a - b));
+                      } else {
+                        // Empêcher de désélectionner toutes les colonnes
+                        if (visibleColumns.length > 1) {
+                          setVisibleColumns(visibleColumns.filter(i => i !== idx));
+                        }
+                      }
+                    }}
+                    className="w-5 h-5 text-primary-600 rounded border-2 border-gray-300"
+                  />
+                  <span className="text-base font-medium text-gray-900 flex-1">{col.header}</span>
+                  {visibleColumns.includes(idx) && (
+                    <span className="text-xs bg-primary-100 text-primary-700 px-2 py-1 rounded-full font-medium">
+                      Visible
+                    </span>
+                  )}
+                </label>
+              ))}
+            </div>
+
+            {/* Footer avec actions */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50 sticky bottom-0">
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setVisibleColumns(columns.map((_, idx) => idx))}
+                  className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-300 active:scale-95"
+                >
+                  Tout sélectionner
+                </button>
+                <button
+                  onClick={() => setShowColumnSelector(false)}
+                  className="flex-1 px-4 py-3 bg-primary-600 text-white rounded-xl font-medium hover:bg-primary-700 active:scale-95"
+                >
+                  Appliquer
+                </button>
+              </div>
+              <p className="text-xs text-gray-500 text-center mt-2">
+                {visibleColumns.length} colonne{visibleColumns.length > 1 ? 's' : ''} visible{visibleColumns.length > 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Table - Responsive avec scroll horizontal sur mobile */}
       <div className="overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
-              {columns.map((column, idx) => (
+              {columns.filter((_, idx) => visibleColumns.includes(idx)).map((column, idx) => (
                 <th
                   key={idx}
                   scope="col"
@@ -233,7 +324,7 @@ export default function TableAdvanced({
                     transition-colors duration-150
                   `}
                 >
-                  {columns.map((column, colIndex) => (
+                  {columns.filter((_, idx) => visibleColumns.includes(idx)).map((column, colIndex) => (
                     <td 
                       key={colIndex} 
                       className="px-3 sm:px-6 py-3 sm:py-4 whitespace-nowrap text-xs sm:text-sm text-gray-900"

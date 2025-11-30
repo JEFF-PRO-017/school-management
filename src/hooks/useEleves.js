@@ -46,7 +46,7 @@ export function useEleves() {
       'TOTAL DÛ': eleveData.totalDu || '0',
       PAYÉ: eleveData.paye || '0',
       RESTE: eleveData.reste || '0',
-      STATUT: eleveData.statut || 'EN ATTENTE',
+      // STATUT: eleveData.statut || 'EN ATTENTE',
       rowIndex: tempId,
       _isOptimistic: true,
     };
@@ -92,36 +92,25 @@ export function useEleves() {
   /**
    * Mettre à jour un élève - UI INSTANTANÉE
    */
+  // Hook useEleves - Partie updateEleve CORRIGÉE
+
   const updateEleve = async (rowIndex, eleveData) => {
-    console.log('✏️ Updating élève:', rowIndex);
+    console.log('✏️ Updating élève:', rowIndex, eleveData);
 
     // Sauvegarder pour rollback
     const previousData = data;
 
-    // ✨ UI INSTANTANÉE
+    // ✨ UI INSTANTANÉE - Spread direct des données
     mutate(
       (current) => {
         const existing = Array.isArray(current) ? current : [];
         return existing.map((eleve) =>
           eleve.rowIndex === rowIndex
             ? {
-                ...eleve,
-                NOM: eleveData.nom || eleve.NOM,
-                PRÉNOM: eleveData.prenom || eleve.PRÉNOM,
-                'DATE NAISS.': eleveData.dateNaissance || eleve['DATE NAISS.'],
-                CLASSE: eleveData.classe || eleve.CLASSE,
-                'ID FAMILLE': eleveData.idFamille || eleve['ID FAMILLE'],
-                INSCRIPTION: eleveData.inscription || eleve.INSCRIPTION,
-                PENSION: eleveData.pension || eleve.PENSION,
-                DOSSIER: eleveData.dossier || eleve.DOSSIER,
-                RÉDUCTION: eleveData.reduction || eleve.RÉDUCTION,
-                'MOTIF RÉDUCTION': eleveData.motifReduction || eleve['MOTIF RÉDUCTION'],
-                'TOTAL DÛ': eleveData.totalDu || eleve['TOTAL DÛ'],
-                PAYÉ: eleveData.paye || eleve.PAYÉ,
-                RESTE: eleveData.reste || eleve.RESTE,
-                STATUT: eleveData.statut || eleve.STATUT,
-                _isOptimistic: true,
-              }
+              ...eleve,
+              ...eleveData, // ✅ Spread direct (clés Excel correctes)
+              _isOptimistic: true,
+            }
             : eleve
         );
       },
@@ -129,25 +118,29 @@ export function useEleves() {
     );
 
     // 🚀 BACKEND ASYNCHRONE
-    fetch(API_URL, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...eleveData, rowIndex }),
-    })
-      .then(res => res.json())
-      .then(() => {
-        console.log('✅ Élève mis à jour côté serveur');
-        setTimeout(() => mutate(), 300);
-      })
-      .catch(error => {
-        console.error('❌ Erreur update:', error);
-        // Rollback
-        mutate(previousData, false);
+    try {
+      const res = await fetch(API_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rowIndex, ...eleveData }),
       });
 
-    return { success: true };
-  };
+      if (!res.ok) throw new Error('Erreur serveur');
 
+      const result = await res.json();
+      console.log('✅ Élève mis à jour côté serveur');
+
+      // Refresh après 300ms
+      setTimeout(() => mutate(), 300);
+
+      return { success: true, ...result };
+    } catch (error) {
+      console.error('❌ Erreur update:', error);
+      // Rollback en cas d'erreur
+      mutate(previousData, false);
+      throw error;
+    }
+  };
   /**
    * Supprimer un élève - UI INSTANTANÉE
    */

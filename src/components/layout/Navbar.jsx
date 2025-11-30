@@ -52,13 +52,13 @@ export default function Navbar() {
       name: 'Paiements', 
       href: '/paiements', 
       icon: DollarSign,
-      mobileOnly: false
+      mobileOnly: true // Seulement dans le menu
     },
     { 
       name: 'Moratoires', 
       href: '/moratoires', 
       icon: Clock,
-      mobileOnly: true // Seulement dans le menu
+      mobileOnly: false 
     },
   ];
   
