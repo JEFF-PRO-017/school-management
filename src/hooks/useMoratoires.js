@@ -7,6 +7,7 @@
 
 import useSWR from 'swr';
 import { useState, useMemo } from 'react';
+import { configswr } from './index';
 
 const API_URL = '/api/moratoires';
 
@@ -19,12 +20,7 @@ export function useMoratoires() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 10000,
-      keepPreviousData: true,
-    }
+    configswr
   );
 
   // États pour les filtres de date
@@ -48,7 +44,7 @@ export function useMoratoires() {
    */
   const filteredMoratoires = useMemo(() => {
     if (!Array.isArray(data)) return [];
-    
+
     let result = [...data];
 
     if (dateDebut) {
@@ -88,7 +84,7 @@ export function useMoratoires() {
     const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
     const startOfYear = new Date(today.getFullYear(), 0, 1);
-    
+
     switch (preset) {
       case 'today':
         setDateDebut(today.toISOString().split('T')[0]);
@@ -135,12 +131,12 @@ export function useMoratoires() {
     const dateDebutObj = new Date();
     const dateFinObj = new Date(dateDebutObj);
     dateFinObj.setDate(dateFinObj.getDate() + (parseInt(moratoireData.duree) * 7));
-    
+
     const dateDebutStr = dateDebutObj.toLocaleDateString('fr-FR');
     const dateFinStr = dateFinObj.toLocaleDateString('fr-FR');
-    
+
     const statut = new Date() > dateFinObj ? 'EN RETARD' : 'EN COURS';
-    
+
     const tempId = `MOR_${Date.now()}`;
     const newMoratoire = {
       ID: tempId,

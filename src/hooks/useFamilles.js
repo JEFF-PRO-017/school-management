@@ -5,6 +5,7 @@
  */
 
 import useSWR from 'swr';
+import { configswr } from './index';
 
 const API_URL = '/api/familles';
 
@@ -17,12 +18,7 @@ export function useFamilles() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 10000,
-      keepPreviousData: true,
-    }
+    configswr
   );
 
   /**
@@ -95,17 +91,17 @@ export function useFamilles() {
         return existing.map((f) =>
           f.rowIndex === rowIndex
             ? {
-                ...f,
-                'NOM FAMILLE': familleData.nomFamille || f['NOM FAMILLE'],
-                CONTACT: familleData.contact || f.CONTACT,
-                EMAIL: familleData.email || f.EMAIL,
-                'NB ENFANTS': familleData.nbEnfants || f['NB ENFANTS'],
-                'TOTAL FAMILLE': familleData.totalFamille || f['TOTAL FAMILLE'],
-                PAYÉ: familleData.paye || f.PAYÉ,
-                RESTE: familleData.reste || f.RESTE,
-                STATUT: familleData.statut || f.STATUT,
-                _isOptimistic: true,
-              }
+              ...f,
+              'NOM FAMILLE': familleData.nomFamille || f['NOM FAMILLE'],
+              CONTACT: familleData.contact || f.CONTACT,
+              EMAIL: familleData.email || f.EMAIL,
+              'NB ENFANTS': familleData.nbEnfants || f['NB ENFANTS'],
+              'TOTAL FAMILLE': familleData.totalFamille || f['TOTAL FAMILLE'],
+              PAYÉ: familleData.paye || f.PAYÉ,
+              RESTE: familleData.reste || f.RESTE,
+              STATUT: familleData.statut || f.STATUT,
+              _isOptimistic: true,
+            }
             : f
         );
       },

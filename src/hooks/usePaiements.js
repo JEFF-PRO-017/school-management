@@ -5,6 +5,7 @@
  */
 
 import useSWR from 'swr';
+import { configswr } from './index';
 
 const API_URL = '/api/paiements';
 
@@ -17,12 +18,7 @@ export function usePaiements() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 10000,
-      keepPreviousData: true,
-    }
+    configswr
   );
 
   /**
@@ -30,7 +26,7 @@ export function usePaiements() {
    */
   const addPaiement = async (paiementData) => {
     const today = new Date().toLocaleDateString('fr-FR');
-    
+
     // Mode famille: plusieurs paiements
     if (paiementData.mode === 'famille' && paiementData.paiements) {
       const newPaiements = paiementData.paiements.map((p, index) => ({
@@ -77,7 +73,7 @@ export function usePaiements() {
 
       return { success: true, count: newPaiements.length };
     }
-    
+
     // Mode individuel
     const newPaiement = {
       'N° TRANS': `temp_${Date.now()}`,
@@ -171,10 +167,10 @@ export function usePaiements() {
       : 0,
     parType: Array.isArray(data)
       ? data.reduce((acc, p) => {
-          const type = p.TYPE || p.type || 'AUTRE';
-          acc[type] = (acc[type] || 0) + 1;
-          return acc;
-        }, {})
+        const type = p.TYPE || p.type || 'AUTRE';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {})
       : {},
   };
 

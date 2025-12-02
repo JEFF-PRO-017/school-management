@@ -115,19 +115,38 @@ export default function ElevesPage() {
       render: (row) => (
         <div className="flex items-center gap-2 sm:gap-3">
           <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${row._isOptimistic
-              ? 'bg-gradient-to-br from-yellow-400 to-yellow-600'
-              : 'bg-gradient-to-br from-primary-400 to-primary-600'
+            ? 'bg-gradient-to-br from-yellow-400 to-yellow-600'
+            : 'bg-gradient-to-br from-primary-400 to-primary-600'
             }`}>
-            {row.NOM?.charAt(0)}{row.PRÉNOM?.charAt(0)}
+            {row.NOM?.charAt(0)}
           </div>
           <div className="min-w-0">
             <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">
-              {row.NOM} {row.PRÉNOM}
+              {row.NOM}
             </p>
             {row._isOptimistic && (
               <span className="text-xs text-yellow-600">En attente</span>
             )}
             <p className="text-xs text-gray-500 sm:hidden">{row.CLASSE}</p>
+          </div>
+        </div>
+      ),
+    },
+
+    {
+      header: 'PRÉNOM',
+      accessor: 'PRÉNOM',
+      render: (row) => (
+        <div className="flex items-center gap-2 sm:gap-3">
+
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900 text-sm sm:text-base truncate">
+              {row.PRÉNOM}
+            </p>
+            {row._isOptimistic && (
+              <span className="text-xs text-yellow-600">En attente</span>
+            )}
+            <p className="text-xs text-gray-500 sm:hidden">{row.rowIndex}</p>
           </div>
         </div>
       ),
@@ -365,8 +384,8 @@ export default function ElevesPage() {
             {/* En-tête avec avatar */}
             <div className="flex items-center gap-3 sm:gap-4 pb-4 border-b border-gray-200">
               <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl ${selectedEleve._isOptimistic
-                  ? 'bg-gradient-to-br from-yellow-400 to-yellow-600'
-                  : 'bg-gradient-to-br from-primary-400 to-primary-600'
+                ? 'bg-gradient-to-br from-yellow-400 to-yellow-600'
+                : 'bg-gradient-to-br from-primary-400 to-primary-600'
                 }`}>
                 {selectedEleve.NOM?.charAt(0)}{selectedEleve.PRÉNOM?.charAt(0)}
               </div>

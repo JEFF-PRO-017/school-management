@@ -6,6 +6,8 @@
  */
 
 import useSWR from 'swr';
+import { configswr } from './index';
+
 
 const API_URL = '/api/eleves';
 
@@ -19,12 +21,7 @@ export function useEleves() {
   const { data, error, isLoading, isValidating, mutate } = useSWR(
     API_URL,
     fetcher,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 10000,        // ✨ 10s entre requêtes
-      keepPreviousData: true,
-    }
+    configswr
   );
 
   /**
@@ -180,7 +177,7 @@ export function useEleves() {
   };
 
   return {
-    eleves: Array.isArray(data) ? data : [],
+    eleves: Array.isArray(data) ? data.filter(e => e.NOM !== '') : [],
     isLoading,
     isValidating,
     error,
