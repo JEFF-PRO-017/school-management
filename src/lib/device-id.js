@@ -16,28 +16,28 @@ function generateDeviceId() {
 // Obtenir ou créer l'ID de l'appareil
 export function getDeviceId() {
   if (typeof window === 'undefined') return 'server';
-  
+
   let deviceId = localStorage.getItem(DEVICE_ID_KEY);
-  
+
   if (!deviceId) {
     deviceId = generateDeviceId();
     localStorage.setItem(DEVICE_ID_KEY, deviceId);
   }
-  
+
   return deviceId;
 }
 
 // Obtenir le nom de l'appareil (défini par l'utilisateur)
 export function getDeviceName() {
   if (typeof window === 'undefined') return 'Serveur';
-  
+
   return localStorage.getItem(DEVICE_NAME_KEY) || 'Appareil non nommé';
 }
 
 // Définir le nom de l'appareil
 export function setDeviceName(name) {
   if (typeof window === 'undefined') return;
-  
+
   localStorage.setItem(DEVICE_NAME_KEY, name);
 }
 
@@ -51,7 +51,7 @@ export function getDeviceInfo() {
       platform: 'server',
     };
   }
-  
+
   return {
     deviceId: getDeviceId(),
     deviceName: getDeviceName(),
@@ -66,7 +66,16 @@ export function getDeviceInfo() {
 export function isNewDevice() {
 
   if (typeof window === 'undefined') return false;
-  
+
   console.log(localStorage.getItem(DEVICE_NAME_KEY))
   return !localStorage.getItem(DEVICE_NAME_KEY);
+}
+
+const admin = [
+  'papa', 'JEFF'
+];
+
+export function isAdmin() {
+  console.log(admin.find(r => r === localStorage.getItem(DEVICE_NAME_KEY)))
+  return admin.find(r => r === localStorage.getItem(DEVICE_NAME_KEY));
 }

@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { syncPendingOperations, getPendingCount } from './offline-manager';
+import { syncPendingOperations, getPendingCount, deletePendingOperations } from './offline-manager';
 import { apiClient } from './api-client';
 
 export function useOnlineStatus() {
@@ -19,7 +19,7 @@ export function useOnlineStatus() {
   // Synchroniser les opérations en attente
   const sync = useCallback(async () => {
     if (isSyncing) return;
-    
+
     setIsSyncing(true);
     try {
       const result = await syncPendingOperations(apiClient);
@@ -33,6 +33,12 @@ export function useOnlineStatus() {
       setIsSyncing(false);
     }
   }, [isSyncing]);
+
+  const clean = () => {
+    deletePendingOperations();
+    setPendingCount(0);
+    setLastSyncResult(null);
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -68,7 +74,7 @@ export function useOnlineStatus() {
       window.removeEventListener('offline', handleOffline);
       clearInterval(interval);
     };
-  }, [sync]);
+  }, [sync, clean]);
 
   return {
     isOnline,
@@ -76,5 +82,6 @@ export function useOnlineStatus() {
     pendingCount,
     lastSyncResult,
     sync,
+    clean,
   };
 }

@@ -56,9 +56,9 @@ class ApiClient {
       }
 
       // Relancer l'erreur si c'est déjà une ApiError
-      if (error instanceof ApiError || error instanceof NetworkError) {
-        throw error;
-      }
+      // if (error instanceof ApiError || error instanceof NetworkError) {
+      //   throw error;
+      // }
 
       // Erreur inattendue
       throw new ApiError(error.message, 500);
@@ -74,10 +74,10 @@ class ApiClient {
   async post(url, data) {
     return this.request(url, {
       method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
   }
-
   // PUT
   async put(url, data) {
     return this.request(url, {

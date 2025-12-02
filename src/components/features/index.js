@@ -17,7 +17,7 @@ export { useMoratoires } from './useMoratoires';
 export const configswr = {
     provider: () => localStorageProvider(),
     revalidateOnReconnect: true,
-    dedupingInterval: 20000,
+    dedupingInterval: 10000,
     keepPreviousData: true,
 };
 
@@ -35,4 +35,26 @@ export function localStorageProvider() {
     });
 
     return map;
+}
+
+export async function POST(url, data) {
+    try {
+        const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(data),
+        });
+
+        const json = await res.json();
+
+        if (!res.ok || json.success === false) {
+            throw new Error(json.error || "Erreur réseau");
+        }
+
+        return { success: true, data: json.data };
+
+    } catch (err) {
+        console.error("POST Error:", err);
+        throw err;
+    }
 }

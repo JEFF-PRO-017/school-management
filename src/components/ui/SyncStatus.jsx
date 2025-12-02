@@ -8,12 +8,12 @@
  */
 
 import { useState } from 'react';
-import { 
-  Wifi, 
-  WifiOff, 
-  Cloud, 
-  CloudOff, 
-  RefreshCw, 
+import {
+  Wifi,
+  WifiOff,
+  Cloud,
+  CloudOff,
+  RefreshCw,
   CheckCircle,
   AlertCircle,
   Loader2
@@ -21,7 +21,7 @@ import {
 import { useOnlineStatus } from '@/lib/use-online-status';
 
 export function SyncStatus({ showDetails = false }) {
-  const { isOnline, isSyncing, pendingCount, lastSyncResult, sync } = useOnlineStatus();
+  const { isOnline, isSyncing, pendingCount, lastSyncResult, sync, clean } = useOnlineStatus();
   const [showTooltip, setShowTooltip] = useState(false);
 
   // Couleur selon le statut
@@ -124,6 +124,13 @@ export function SyncStatus({ showDetails = false }) {
             </div>
           )}
 
+          <button
+            onClick={clean}
+            className="w-full mb-3 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-all"
+          >
+            Nettoyer l'état de synchronisation
+          </button>
+
           {/* Bouton sync manuelle */}
           <button
             onClick={sync}
@@ -154,9 +161,8 @@ export function OfflineBanner() {
   if (isOnline && pendingCount === 0) return null;
 
   return (
-    <div className={`px-4 py-2 text-sm text-center ${
-      isOnline ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
-    }`}>
+    <div className={`px-4 py-2 text-sm text-center ${isOnline ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'
+      }`}>
       {!isOnline ? (
         <span className="flex items-center justify-center gap-2">
           <WifiOff className="w-4 h-4" />

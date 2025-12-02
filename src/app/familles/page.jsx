@@ -17,14 +17,15 @@ import { SyncStatus } from '@/components/ui/SyncStatus';
 import { formatCurrency, getStatusColor } from '@/lib/utils';
 import { useFamilles } from '@/hooks/useFamilles';
 import { useEleves } from '@/hooks/useEleves';
+import { isAdmin } from '@/lib/device-id';
 
 export default function FamillesPage() {
   const router = useRouter();
-  
+
   // Hooks SWR
   const { familles, isLoading: loadingFamilles, addFamille, refresh } = useFamilles();
   const { eleves, isLoading: loadingEleves } = useEleves();
-  
+
   // États locaux
   const [showAddModal, setShowAddModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,7 +34,7 @@ export default function FamillesPage() {
     contact: '',
     email: '',
   });
-  
+
   // Grouper les élèves par famille
   const elevesParFamille = useMemo(() => {
     const grouped = {};
@@ -46,7 +47,7 @@ export default function FamillesPage() {
     });
     return grouped;
   }, [eleves]);
-  
+
   // Calculer les statistiques par famille
   const famillesAvecStats = useMemo(() => {
     return familles.map(famille => {
@@ -55,11 +56,11 @@ export default function FamillesPage() {
       const totalDu = enfants.reduce((sum, e) => sum + (parseFloat(e['TOTAL DÛ']) || 0), 0);
       const totalPaye = enfants.reduce((sum, e) => sum + (parseFloat(e.PAYÉ) || 0), 0);
       const reste = totalDu - totalPaye;
-      
+
       let statut = 'EN ATTENTE';
       if (totalPaye >= totalDu && totalDu > 0) statut = 'SOLDÉ';
       else if (totalPaye > 0) statut = 'PARTIEL';
-      
+
       return {
         ...famille,
         enfants,
@@ -71,12 +72,12 @@ export default function FamillesPage() {
       };
     });
   }, [familles, elevesParFamille]);
-  
+
   // Ajouter une famille
   const handleAddFamille = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     try {
       const result = await addFamille({
         ...formData,
@@ -86,10 +87,10 @@ export default function FamillesPage() {
         reste: '0',
         statut: 'EN ATTENTE',
       });
-      
+
       setShowAddModal(false);
       setFormData({ nomFamille: '', contact: '', email: '' });
-      
+
       if (result.offline) {
         alert('Famille enregistrée localement.');
       } else {
@@ -101,7 +102,7 @@ export default function FamillesPage() {
       setIsSubmitting(false);
     }
   };
-  
+
   // Colonnes du tableau
   const columns = [
     {
@@ -172,8 +173,8 @@ export default function FamillesPage() {
     {
       header: 'Actions',
       render: (row) => (
-        <Button 
-          size="sm" 
+        <Button
+          size="sm"
           variant="ghost"
           onClick={(e) => {
             e.stopPropagation();
@@ -186,7 +187,7 @@ export default function FamillesPage() {
       ),
     },
   ];
-  
+
   // Stats globales
   const stats = useMemo(() => ({
     total: familles.length,
@@ -194,7 +195,7 @@ export default function FamillesPage() {
     partielles: famillesAvecStats.filter(f => f.statutCalcule === 'PARTIEL').length,
     enAttente: famillesAvecStats.filter(f => f.statutCalcule === 'EN ATTENTE').length,
   }), [familles, famillesAvecStats]);
-  
+
   if (loadingFamilles || loadingEleves) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -205,7 +206,7 @@ export default function FamillesPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
@@ -216,13 +217,13 @@ export default function FamillesPage() {
         </div>
         <div className="flex items-center gap-3">
           <SyncStatus showDetails />
-          <Button onClick={() => setShowAddModal(true)}>
+          {isAdmin() && <Button onClick={() => setShowAddModal(true)}>
             <Plus size={20} className="mr-2" />
             Nouvelle famille
-          </Button>
+          </Button>}
         </div>
       </div>
-      
+
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
@@ -249,7 +250,7 @@ export default function FamillesPage() {
           <p className="text-xl font-bold text-red-700">{stats.enAttente}</p>
         </div>
       </div>
-      
+
       {/* Tableau */}
       <TableAdvanced
         columns={columns}
@@ -262,7 +263,7 @@ export default function FamillesPage() {
         refreshable={true}
         onRefresh={refresh}
       />
-      
+
       {/* Modal Ajout */}
       <Modal
         isOpen={showAddModal}
@@ -279,7 +280,7 @@ export default function FamillesPage() {
             required
             placeholder="Ex: Famille MBARGA"
           />
-          
+
           <Input
             label="Téléphone"
             name="contact"
@@ -288,7 +289,7 @@ export default function FamillesPage() {
             onChange={(e) => setFormData({ ...formData, contact: e.target.value })}
             placeholder="Ex: 6XXXXXXXX"
           />
-          
+
           <Input
             label="Email"
             name="email"
@@ -297,7 +298,7 @@ export default function FamillesPage() {
             onChange={(e) => setFormData({ ...formData, email: e.target.value })}
             placeholder="exemple@email.com"
           />
-          
+
           <div className="flex gap-3 pt-4">
             <Button type="submit" fullWidth disabled={isSubmitting}>
               {isSubmitting ? 'Enregistrement...' : 'Ajouter la famille'}

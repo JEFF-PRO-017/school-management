@@ -22,9 +22,9 @@ export const OP_TYPES = {
  */
 export function addPendingOperation(operation) {
   if (typeof window === 'undefined') return;
-  
+
   const pending = getPendingOperations();
-  
+
   const newOp = {
     id: `op_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
     timestamp: new Date().toISOString(),
@@ -34,10 +34,10 @@ export function addPendingOperation(operation) {
     retryCount: 0,
     ...operation,
   };
-  
+
   pending.push(newOp);
   localStorage.setItem(PENDING_OPS_KEY, JSON.stringify(pending));
-  
+
   console.log('[Offline] Operation queued:', newOp.id);
   return newOp;
 }
@@ -47,7 +47,7 @@ export function addPendingOperation(operation) {
  */
 export function getPendingOperations() {
   if (typeof window === 'undefined') return [];
-  
+
   try {
     return JSON.parse(localStorage.getItem(PENDING_OPS_KEY) || '[]');
   } catch {
@@ -60,11 +60,11 @@ export function getPendingOperations() {
  */
 export function markOperationSynced(operationId) {
   if (typeof window === 'undefined') return;
-  
+
   const pending = getPendingOperations();
   const updated = pending.filter(op => op.id !== operationId);
   localStorage.setItem(PENDING_OPS_KEY, JSON.stringify(updated));
-  
+
   console.log('[Offline] Operation synced:', operationId);
 }
 
@@ -73,7 +73,7 @@ export function markOperationSynced(operationId) {
  */
 export function incrementRetryCount(operationId) {
   if (typeof window === 'undefined') return;
-  
+
   const pending = getPendingOperations();
   const updated = pending.map(op => {
     if (op.id === operationId) {
@@ -89,22 +89,22 @@ export function incrementRetryCount(operationId) {
  */
 export async function syncPendingOperations(apiClient) {
   const pending = getPendingOperations();
-  
+
   if (pending.length === 0) {
     console.log('[Sync] No pending operations');
     return { success: true, synced: 0, failed: 0 };
   }
-  
+
   console.log(`[Sync] Starting sync of ${pending.length} operations...`);
-  
+
   let synced = 0;
   let failed = 0;
-  
+
   // Trier par timestamp (plus ancien d'abord)
-  const sorted = [...pending].sort((a, b) => 
+  const sorted = [...pending].sort((a, b) =>
     new Date(a.timestamp) - new Date(b.timestamp)
   );
-  
+
   for (const operation of sorted) {
     // Abandonner après 5 tentatives
     if (operation.retryCount >= 5) {
@@ -113,7 +113,7 @@ export async function syncPendingOperations(apiClient) {
       failed++;
       continue;
     }
-    
+
     try {
       await executeOperation(operation, apiClient);
       markOperationSynced(operation.id);
@@ -124,9 +124,9 @@ export async function syncPendingOperations(apiClient) {
       failed++;
     }
   }
-  
+
   console.log(`[Sync] Complete: ${synced} synced, ${failed} failed`);
-  
+
   // Sauvegarder le statut de sync
   setSyncStatus({
     lastSync: new Date().toISOString(),
@@ -134,7 +134,7 @@ export async function syncPendingOperations(apiClient) {
     failed,
     pending: getPendingOperations().length,
   });
-  
+
   return { success: failed === 0, synced, failed };
 }
 
@@ -143,17 +143,17 @@ export async function syncPendingOperations(apiClient) {
  */
 async function executeOperation(operation, apiClient) {
   const { type, entity, data, rowIndex } = operation;
-  
+
   switch (type) {
     case OP_TYPES.CREATE:
       return await apiClient.post(`/api/${entity}`, data);
-      
+
     case OP_TYPES.UPDATE:
       return await apiClient.put(`/api/${entity}`, { ...data, rowIndex });
-      
+
     case OP_TYPES.DELETE:
       return await apiClient.delete(`/api/${entity}?rowIndex=${rowIndex}`);
-      
+
     default:
       throw new Error(`Unknown operation type: ${type}`);
   }
@@ -164,7 +164,7 @@ async function executeOperation(operation, apiClient) {
  */
 export function getSyncStatus() {
   if (typeof window === 'undefined') return null;
-  
+
   try {
     return JSON.parse(localStorage.getItem(SYNC_STATUS_KEY) || 'null');
   } catch {
@@ -177,7 +177,7 @@ export function getSyncStatus() {
  */
 export function setSyncStatus(status) {
   if (typeof window === 'undefined') return;
-  
+
   localStorage.setItem(SYNC_STATUS_KEY, JSON.stringify(status));
 }
 
@@ -193,4 +193,11 @@ export function hasPendingOperations() {
  */
 export function getPendingCount() {
   return getPendingOperations().length;
+}
+
+export const deletePendingOperations = () => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(PENDING_OPS_KEY);
+  localStorage.clear();
+  console.log('[Offline] All pending operations deleted');
 }

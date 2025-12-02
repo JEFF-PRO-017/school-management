@@ -14,48 +14,46 @@ import { formatCurrency, getStatusColor } from '@/lib/utils';
 import { useEleves } from '@/hooks/useEleves';
 import { useFamilles } from '@/hooks/useFamilles';
 import { usePaiements } from '@/hooks/usePaiements';
+import { isAdmin } from '@/lib/device-id';
 
 export default function ElevesPage() {
   const router = useRouter();
-  
+
   // Protection hydratation
   const [mounted, setMounted] = useState(false);
-  
+
   // Hooks SWR
-  const { 
-    eleves, 
-    isLoading, 
-    isValidating, 
-    error, 
-    addEleve, 
-    refresh: refreshEleves 
+  const {
+    eleves,
+    isLoading,
+    isValidating,
+    error,
+    addEleve,
+    refresh: refreshEleves
   } = useEleves();
 
-  useEffect(()=>{
-    eleves
-    
-  },[eleves])
+
   const { familles } = useFamilles();
   const { addPaiement, refresh: refreshPaiements } = usePaiements();
-  
+
   // États locaux pour les modales
   const [showAddModal, setShowAddModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedEleve, setSelectedEleve] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // Montage côté client
   useEffect(() => {
     setMounted(true);
   }, []);
-  
+
   const handleAddEleve = async (data) => {
     setIsSubmitting(true);
     try {
       const result = await addEleve(data);
       setShowAddModal(false);
-      
+
       if (result.offline) {
         alert('Élève ajouté localement. Il sera synchronisé à la reconnexion.');
       } else {
@@ -68,18 +66,18 @@ export default function ElevesPage() {
       setIsSubmitting(false);
     }
   };
-  
+
   const handlePayment = async (data) => {
     setIsSubmitting(true);
     try {
       const result = await addPaiement(data);
-      
+
       // Rafraîchir les élèves car le solde change
       await refreshEleves();
-      
+
       setShowPaymentModal(false);
       setSelectedEleve(null);
-      
+
       if (result.offline) {
         alert('Paiement enregistré localement. Il sera synchronisé à la reconnexion.');
       } else {
@@ -92,7 +90,7 @@ export default function ElevesPage() {
       setIsSubmitting(false);
     }
   };
-  
+
   const openPaymentModal = (eleve, e) => {
     e?.stopPropagation();
     setSelectedEleve(eleve);
@@ -108,7 +106,7 @@ export default function ElevesPage() {
     refreshEleves();
     refreshPaiements();
   };
-  
+
   // Configuration des colonnes - responsive
   const columns = [
     {
@@ -116,11 +114,10 @@ export default function ElevesPage() {
       accessor: 'NOM',
       render: (row) => (
         <div className="flex items-center gap-2 sm:gap-3">
-          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${
-            row._isOptimistic 
-              ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' 
+          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-white font-bold text-xs sm:text-sm ${row._isOptimistic
+              ? 'bg-gradient-to-br from-yellow-400 to-yellow-600'
               : 'bg-gradient-to-br from-primary-400 to-primary-600'
-          }`}>
+            }`}>
             {row.NOM?.charAt(0)}{row.PRÉNOM?.charAt(0)}
           </div>
           <div className="min-w-0">
@@ -204,13 +201,13 @@ export default function ElevesPage() {
       ),
     },
   ];
-  
+
   // Statistiques
   const stats = {
     total: eleves.length,
-    soldes: eleves.filter(e => e.STATUT === 'SOLDÉ').length,
-    partiels: eleves.filter(e => e.STATUT === 'PARTIEL').length,
-    enAttente: eleves.filter(e => e.STATUT === 'EN ATTENTE' || !e.STATUT).length,
+    soldes: eleves.filter(e => e.STATUT === '✅ PAYÉ').length,
+    partiels: eleves.filter(e => e.STATUT === '⚠️ PARTIEL').length,
+    enAttente: eleves.filter(e => e.STATUT === '❌ NON PAYÉ' || !e.STATUT).length,
   };
 
   // Attendre le montage
@@ -253,7 +250,7 @@ export default function ElevesPage() {
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-4 sm:space-y-6 animate-fade-in p-2 sm:p-0">
       {/* Header - Responsive */}
@@ -264,14 +261,14 @@ export default function ElevesPage() {
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
           <SyncStatus showDetails />
-          <Button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-initial">
+          {isAdmin() && <Button onClick={() => setShowAddModal(true)} className="flex-1 sm:flex-initial">
             <Plus size={18} className="sm:mr-2" />
             <span className="hidden sm:inline">Nouvel élève</span>
             <span className="sm:hidden">Nouveau</span>
-          </Button>
+          </Button>}
         </div>
       </div>
-      
+
       {/* Indicateur de rafraîchissement */}
       {isValidating && (
         <div className="text-center text-xs sm:text-sm text-gray-500">
@@ -281,7 +278,7 @@ export default function ElevesPage() {
           </span>
         </div>
       )}
-      
+
       {/* Stats rapides - Responsive */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
         <div className="bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border border-gray-200 shadow-sm">
@@ -301,7 +298,7 @@ export default function ElevesPage() {
           <p className="text-xl sm:text-2xl font-bold text-red-700">{stats.enAttente}</p>
         </div>
       </div>
-      
+
       {/* Table avancée */}
       <TableAdvanced
         columns={columns}
@@ -314,7 +311,7 @@ export default function ElevesPage() {
         refreshable={true}
         onRefresh={handleRefresh}
       />
-      
+
       {/* Modal Ajout Élève */}
       <Modal
         isOpen={showAddModal}
@@ -329,7 +326,7 @@ export default function ElevesPage() {
           isLoading={isSubmitting}
         />
       </Modal>
-      
+
       {/* Modal Paiement */}
       <Modal
         isOpen={showPaymentModal}
@@ -367,11 +364,10 @@ export default function ElevesPage() {
           <div className="space-y-4 sm:space-y-6">
             {/* En-tête avec avatar */}
             <div className="flex items-center gap-3 sm:gap-4 pb-4 border-b border-gray-200">
-              <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl ${
-                selectedEleve._isOptimistic 
-                  ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' 
+              <div className={`w-12 h-12 sm:w-16 sm:h-16 rounded-full flex items-center justify-center text-white font-bold text-lg sm:text-xl ${selectedEleve._isOptimistic
+                  ? 'bg-gradient-to-br from-yellow-400 to-yellow-600'
                   : 'bg-gradient-to-br from-primary-400 to-primary-600'
-              }`}>
+                }`}>
                 {selectedEleve.NOM?.charAt(0)}{selectedEleve.PRÉNOM?.charAt(0)}
               </div>
               <div className="min-w-0 flex-1">
@@ -459,10 +455,10 @@ export default function ElevesPage() {
               {/* Barre de progression */}
               <div className="mt-4">
                 <div className="h-2 sm:h-3 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-gradient-to-r from-green-500 to-green-600 rounded-full transition-all duration-500"
-                    style={{ 
-                      width: `${Math.min(100, (parseFloat(selectedEleve.PAYÉ || 0) / parseFloat(selectedEleve['TOTAL DÛ'] || 1)) * 100)}%` 
+                    style={{
+                      width: `${Math.min(100, (parseFloat(selectedEleve.PAYÉ || 0) / parseFloat(selectedEleve['TOTAL DÛ'] || 1)) * 100)}%`
                     }}
                   />
                 </div>
@@ -474,8 +470,8 @@ export default function ElevesPage() {
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-4 border-t border-gray-200">
-              <Button 
-                variant="success" 
+              <Button
+                variant="success"
                 onClick={() => {
                   setShowDetailModal(false);
                   openPaymentModal(selectedEleve);
@@ -485,8 +481,8 @@ export default function ElevesPage() {
               >
                 💰 Enregistrer un paiement
               </Button>
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 onClick={() => setShowDetailModal(false)}
                 fullWidth
               >

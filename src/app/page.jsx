@@ -7,73 +7,73 @@
 
 import { useMemo, useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { 
-  Calendar, 
-  Eye, 
-  Clock, 
-  Plus, 
-  TrendingUp, 
-  Users, 
+import {
+  Calendar,
+  Eye,
+  Clock,
+  Plus,
+  TrendingUp,
+  Users,
   DollarSign,
   ArrowRight,
   CheckCircle,
   AlertCircle
 } from 'lucide-react';
-import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { SyncStatus } from '@/components/ui/SyncStatus';
 import PaiementForm from '@/components/features/PaiementForm';
-import { formatCurrency, getStatusColor } from '@/lib/utils';
+import { formatCurrency } from '@/lib/utils';
 import { useEleves } from '@/hooks/useEleves';
 import { usePaiements } from '@/hooks/usePaiements';
 import { useFamilles } from '@/hooks/useFamilles';
+import { isAdmin } from '@/lib/device-id';
 
 export default function Dashboard() {
   const router = useRouter();
-  
+
   // États locaux
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [today, setToday] = useState('');
   const [mounted, setMounted] = useState(false);
-  
+
   // Hooks SWR
   const { eleves, isLoading: loadingEleves } = useEleves();
   const { paiements, isLoading: loadingPaiements, addPaiement } = usePaiements();
   const { familles, isLoading: loadingFamilles } = useFamilles();
-  
+
   // Date du jour (côté client uniquement)
   useEffect(() => {
     setToday(new Date().toISOString().split('T')[0]);
     setMounted(true);
   }, []);
-  
+
   // Paiements du jour
   const todayPayments = useMemo(() => {
     if (!today) return [];
     return paiements.filter(p => p.DATE === today);
   }, [paiements, today]);
-  
+
   const todayTotal = useMemo(() => {
     return todayPayments.reduce((sum, p) => sum + parseFloat(p['MONTANT PAYÉ'] || 0), 0);
   }, [todayPayments]);
-  
+
   // Statistiques
   const stats = useMemo(() => {
     if (!eleves.length) return null;
-    
+
     const totalEleves = eleves.length;
     const totalDu = eleves.reduce((sum, e) => sum + parseFloat(e['TOTAL DÛ'] || 0), 0);
     const totalPaye = eleves.reduce((sum, e) => sum + parseFloat(e.PAYÉ || 0), 0);
     const totalReste = eleves.reduce((sum, e) => sum + parseFloat(e.RESTE || 0), 0);
-    
-    const elevesSoldes = eleves.filter(e => e.STATUT === 'SOLDÉ').length;
-    const elevesImpaye = eleves.filter(e => e.STATUT === 'EN ATTENTE' || !e.STATUT).length;
-    
+
+    const elevesSoldes = eleves.filter(e => e.STATUT === '✅ PAYÉ').length;
+    const elevesImpaye = eleves.filter(e => e.STATUT !== '✅ PAYÉ' || !e.STATUT).length;
+
     const tauxRecouvrement = totalDu > 0 ? (totalPaye / totalDu) * 100 : 0;
-    
+
     return {
       totalEleves,
       totalDu,
@@ -84,7 +84,7 @@ export default function Dashboard() {
       tauxRecouvrement,
     };
   }, [eleves]);
-  
+
   // Ajouter un paiement
   const handlePayment = async (data) => {
     setIsSubmitting(true);
@@ -97,10 +97,10 @@ export default function Dashboard() {
       setIsSubmitting(false);
     }
   };
-  
+
   // Chargement
   const isLoading = loadingEleves || loadingPaiements || loadingFamilles;
-  
+
   // Attendre le montage
   if (!mounted) {
     return (
@@ -113,7 +113,7 @@ export default function Dashboard() {
       </div>
     );
   }
-  
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -124,7 +124,7 @@ export default function Dashboard() {
       </div>
     );
   }
-  
+
   return (
     <div className="space-y-4 sm:space-y-6 animate-fade-in p-3 sm:p-0">
       {/* Header Mobile First */}
@@ -136,9 +136,9 @@ export default function Dashboard() {
           </div>
           <SyncStatus />
         </div>
-        
+
         {/* Bouton paiement principal - Grand et visible */}
-        <Button 
+        <Button
           onClick={() => setShowPaymentModal(true)}
           className="w-full py-4 text-base font-semibold shadow-lg"
           variant="success"
@@ -147,7 +147,7 @@ export default function Dashboard() {
           Nouveau paiement
         </Button>
       </div>
-      
+
       {/* Card Paiements du jour - Mise en avant */}
       <div className="bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl shadow-xl overflow-hidden">
         <div className="p-4 sm:p-6 text-white">
@@ -160,9 +160,9 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-base sm:text-lg font-bold">Aujourd'hui</h2>
                 <p className="text-xs text-green-100">
-                  {today && new Date(today).toLocaleDateString('fr-FR', { 
-                    weekday: 'short', 
-                    day: 'numeric', 
+                  {today && new Date(today).toLocaleDateString('fr-FR', {
+                    weekday: 'short',
+                    day: 'numeric',
                     month: 'short'
                   })}
                 </p>
@@ -172,13 +172,13 @@ export default function Dashboard() {
               {todayPayments.length} transactions
             </Badge>
           </div>
-          
+
           {/* Montant total */}
           <div className="bg-white/10 backdrop-blur rounded-xl p-4 mb-4">
             <p className="text-xs sm:text-sm text-green-100 mb-1">Total encaissé</p>
             <p className="text-3xl sm:text-4xl font-bold">{formatCurrency(todayTotal)}</p>
           </div>
-          
+
           {/* Liste des paiements ou message vide */}
           {todayPayments.length > 0 ? (
             <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -210,7 +210,7 @@ export default function Dashboard() {
                   </div>
                 </div>
               ))}
-              
+
               {todayPayments.length > 3 && (
                 <button
                   onClick={() => router.push('/paiements')}
@@ -236,12 +236,12 @@ export default function Dashboard() {
           )}
         </div>
       </div>
-      
+
       {/* Statistiques rapides - Grid 2x2 pour mobile */}
-      {stats && (
+      {isAdmin() && (
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
           {/* Total élèves */}
-          <div 
+          <div
             onClick={() => router.push('/eleves')}
             className="bg-white rounded-xl sm:rounded-2xl p-4 shadow-md border border-blue-100 hover:shadow-lg transition-all active:scale-95"
           >
@@ -257,7 +257,7 @@ export default function Dashboard() {
               <span className="text-green-600 font-medium">{stats.elevesSoldes} soldés</span>
             </div>
           </div>
-          
+
           {/* Total payé */}
           <div className="bg-white rounded-xl sm:rounded-2xl p-4 shadow-md border border-green-100">
             <div className="flex items-center gap-2 mb-2">
@@ -273,9 +273,9 @@ export default function Dashboard() {
               sur {formatCurrency(stats.totalDu, true)}
             </div>
           </div>
-          
+
           {/* Reste à payer */}
-          <div 
+          <div
             onClick={() => router.push('/eleves')}
             className="bg-white rounded-xl sm:rounded-2xl p-4 shadow-md border border-red-100 hover:shadow-lg transition-all active:scale-95"
           >
@@ -289,10 +289,10 @@ export default function Dashboard() {
               {formatCurrency(stats.totalReste, true)}
             </p>
             <div className="mt-2 flex items-center gap-2 text-xs">
-              <span className="text-red-600 font-medium">{stats.elevesImpaye} élèves</span>
+              <span className="text-red-600 font-medium">{stats.elevesImpaye} non soldés</span>
             </div>
           </div>
-          
+
           {/* Taux de recouvrement */}
           <div className="bg-gradient-to-br from-purple-500 to-pink-500 rounded-xl sm:rounded-2xl p-4 shadow-md text-white">
             <div className="flex items-center gap-2 mb-2">
@@ -305,7 +305,7 @@ export default function Dashboard() {
               {Math.round(stats.tauxRecouvrement)}%
             </p>
             <div className="mt-2 w-full bg-white/20 rounded-full h-1.5 overflow-hidden backdrop-blur">
-              <div 
+              <div
                 className="h-full bg-white rounded-full transition-all duration-500"
                 style={{ width: `${stats.tauxRecouvrement}%` }}
               />
@@ -313,7 +313,7 @@ export default function Dashboard() {
           </div>
         </div>
       )}
-      
+
       {/* Actions rapides */}
       <div className="grid grid-cols-2 gap-3 sm:gap-4">
         <button
@@ -325,7 +325,7 @@ export default function Dashboard() {
           <p className="text-xs text-gray-500 mt-1">Inscriptions & paiements</p>
           <ArrowRight className="w-4 h-4 text-gray-400 mt-2" />
         </button>
-        
+
         <button
           onClick={() => router.push('/paiements')}
           className="bg-white rounded-xl p-4 shadow-md border border-gray-200 hover:shadow-lg transition-all active:scale-95 text-left"
@@ -336,7 +336,7 @@ export default function Dashboard() {
           <ArrowRight className="w-4 h-4 text-gray-400 mt-2" />
         </button>
       </div>
-      
+
       {/* Modal Paiement */}
       <Modal
         isOpen={showPaymentModal}
